@@ -348,6 +348,41 @@ header h1 {
     color: #007bff; /* Blue */
 }
 
+/* Styling for train number links */
+.train-item a {
+    color: inherit;
+    text-decoration: none;
+    font-weight: bold;
+    border-bottom: 1px dashed currentColor;
+}
+
+.train-item a:hover {
+    color: #007bff;
+    border-bottom: 1px solid #007bff;
+}
+
+.train-item a:visited {
+    color: inherit;
+}
+
+/* Specific styling for same direction trains */
+.same-train a {
+    color: #28a745;
+}
+
+.same-train a:hover {
+    color: #1e7e34;
+}
+
+/* Specific styling for meeting trains */
+.meeting-train a {
+    color: #dc3545;
+}
+
+.meeting-train a:hover {
+    color: #c82333;
+}
+
 /* Responsive */
 @media (min-width: 768px) {
     .container {

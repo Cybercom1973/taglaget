@@ -41,6 +41,24 @@ function isSameDirection(dir1, dir2) {
     return sameFromTo || sameLocations;
 }
 
+// Format delay information
+function formatDelay(advertisedTime, actualTime) {
+    if (!actualTime || !advertisedTime) return 'Ingen info';
+    
+    var scheduled = new Date(advertisedTime);
+    var actual = new Date(actualTime);
+    var diffMs = actual - scheduled;
+    var diffMin = Math.round(diffMs / 60000);
+    
+    if (diffMin === 0) {
+        return 'I tid';
+    } else if (diffMin > 0) {
+        return '+' + diffMin + ' min';
+    } else {
+        return diffMin + ' min';
+    }
+}
+
 // Classify all trains per station
 function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOtherTrains) {
     var currentDirection = determineTrainDirection(currentAnnouncements);
@@ -55,20 +73,45 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
         trainsByNumber[num].push(ann);
     });
     
-    // Classify per station
-    var trainsAtStations = {};
+    // First: Find each train's CURRENT position (latest station with TimeAtLocation)
+    var trainCurrentPositions = {};
     
-    allOtherTrains.forEach(function(ann) {
-        var trainNum = ann.AdvertisedTrainIdent;
-        var stationSig = ann.LocationSignature;
-        
-        // Skip current train
+    Object.keys(trainsByNumber).forEach(function(trainNum) {
         if (trainNum === currentTrainNumber) return;
         
-        // Only show trains that have actually passed (have TimeAtLocation)
-        if (!ann.TimeAtLocation) return;
+        var announcements = trainsByNumber[trainNum];
         
-        // Create station entry if it doesn't exist
+        // Sort by time
+        var sorted = announcements.slice().sort(function(a, b) {
+            return new Date(a.AdvertisedTimeAtLocation) - new Date(b.AdvertisedTimeAtLocation);
+        });
+        
+        // Find LATEST station with TimeAtLocation (actually passed)
+        var currentPosition = null;
+        for (var i = sorted.length - 1; i >= 0; i--) {
+            if (sorted[i].TimeAtLocation) {
+                currentPosition = {
+                    station: sorted[i].LocationSignature,
+                    time: sorted[i].AdvertisedTimeAtLocation,
+                    actualTime: sorted[i].TimeAtLocation,
+                    track: sorted[i].TrackAtLocation
+                };
+                break;
+            }
+        }
+        
+        if (currentPosition) {
+            trainCurrentPositions[trainNum] = currentPosition;
+        }
+    });
+    
+    // Then: Add each train ONLY at its current position
+    var trainsAtStations = {};
+    
+    Object.keys(trainCurrentPositions).forEach(function(trainNum) {
+        var position = trainCurrentPositions[trainNum];
+        var stationSig = position.station;
+        
         if (!trainsAtStations[stationSig]) {
             trainsAtStations[stationSig] = {
                 sameDirection: [],
@@ -76,23 +119,21 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
             };
         }
         
-        // Determine direction for this train
         var trainDirection = determineTrainDirection(trainsByNumber[trainNum]);
         
-        // Classify
         if (trainDirection && isSameDirection(currentDirection, trainDirection)) {
             trainsAtStations[stationSig].sameDirection.push({
                 trainNumber: trainNum,
-                time: ann.AdvertisedTimeAtLocation,
-                actualTime: ann.TimeAtLocation,
-                track: ann.TrackAtLocation
+                time: position.time,
+                actualTime: position.actualTime,
+                track: position.track
             });
         } else if (trainDirection) {
             trainsAtStations[stationSig].opposite.push({
                 trainNumber: trainNum,
-                time: ann.AdvertisedTimeAtLocation,
-                actualTime: ann.TimeAtLocation,
-                track: ann.TrackAtLocation
+                time: position.time,
+                actualTime: position.actualTime,
+                track: position.track
             });
         }
     });
@@ -497,9 +538,21 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         if (station.isAnnounced && station.advertisedTime) {
             const time = formatTime(station.advertisedTime);
             const $timeSpan = $('<div>').addClass('scheduled-time').text(time);
+            
             if (station.actualTime) {
-                const actualTime = formatTime(station.actualTime);
-                $timeSpan.append($('<span>').addClass('actual-time').text(' (' + actualTime + ')'));
+                const delay = formatDelay(station.advertisedTime, station.actualTime);
+                const $delaySpan = $('<span>').addClass('delay-info');
+                
+                // Color coding
+                if (delay === 'I tid') {
+                    $delaySpan.addClass('on-time').text(' (' + delay + ')');
+                } else if (delay.startsWith('+')) {
+                    $delaySpan.addClass('delayed').text(' (' + delay + ')');
+                } else {
+                    $delaySpan.addClass('early').text(' (' + delay + ')');
+                }
+                
+                $timeSpan.append($delaySpan);
             }
             $trainCell.append($timeSpan);
         }
@@ -510,9 +563,10 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         
         if (stationTrains && stationTrains.sameDirection) {
             stationTrains.sameDirection.forEach(function(train) {
+                var delay = formatDelay(train.time, train.actualTime);
                 var $trainSpan = $('<div>')
                     .addClass('train-item same-train')
-                    .text(train.trainNumber + ' ' + formatTime(train.time));
+                    .text(train.trainNumber + ' ' + formatTime(train.time) + ' (' + delay + ')');
                 $trainCell.append($trainSpan);
             });
         }
@@ -524,9 +578,10 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         
         if (stationTrains && stationTrains.opposite) {
             stationTrains.opposite.forEach(function(train) {
+                var delay = formatDelay(train.time, train.actualTime);
                 var $trainSpan = $('<div>')
                     .addClass('train-item meeting-train')
-                    .text(train.trainNumber + ' ' + formatTime(train.time));
+                    .text(train.trainNumber + ' ' + formatTime(train.time) + ' (' + delay + ')');
                 $meetCell.append($trainSpan);
             });
         }
@@ -535,6 +590,19 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         
         $tbody.append($row);
     });
+    
+    // Auto-scroll to current train position
+    if (currentIndex >= 0) {
+        setTimeout(function() {
+            var $currentRow = $('#table-body tr').eq(currentIndex);
+            if ($currentRow.length > 0) {
+                $currentRow[0].scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                });
+            }
+        }, 100);
+    }
 }
 
 function formatTime(isoString) {

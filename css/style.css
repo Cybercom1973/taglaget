@@ -330,6 +330,24 @@ header h1 {
     background-color: #444;
 }
 
+/* Delay information styling */
+.delay-info {
+    font-weight: bold;
+    margin-left: 5px;
+}
+
+.delay-info.on-time {
+    color: #28a745; /* Green */
+}
+
+.delay-info.delayed {
+    color: #dc3545; /* Red */
+}
+
+.delay-info.early {
+    color: #007bff; /* Blue */
+}
+
 /* Responsive */
 @media (min-width: 768px) {
     .container {

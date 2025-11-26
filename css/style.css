@@ -190,6 +190,7 @@ header h1 {
 /* Train table */
 .train-view {
     padding: 10px;
+    padding-bottom: 80px;
 }
 
 .loading {
@@ -224,6 +225,24 @@ header h1 {
     width: 60px;
 }
 
+/* Passed station - dimmed */
+.station-cell.passed-station {
+    color: #666;
+}
+
+/* Unannounced station - smaller and gray */
+.station-cell.unannounced-station {
+    color: #555;
+    font-weight: 400;
+    font-size: 12px;
+}
+
+/* Transit zone - where train might be */
+.station-cell.transit-zone {
+    color: #f5a623;
+    font-weight: 500;
+}
+
 .same-direction-cell,
 .meeting-cell {
     font-style: italic;
@@ -241,6 +260,7 @@ header h1 {
     color: #4ade80;
 }
 
+/* Current train position - highlighted */
 .current-train {
     color: #4ade80;
     background-color: rgba(74, 222, 128, 0.2);
@@ -251,9 +271,36 @@ header h1 {
     font-weight: 600;
 }
 
+/* Train in transit between stations */
+.transit-train {
+    color: #f5a623;
+    background-color: rgba(245, 166, 35, 0.2);
+    border: 1px dashed #f5a623;
+    padding: 2px 6px;
+    display: inline-block;
+    font-style: normal;
+    font-size: 12px;
+}
+
+/* Scheduled time */
+.scheduled-time {
+    color: #888;
+    font-size: 12px;
+    font-style: normal;
+}
+
+.actual-time {
+    color: #4ade80;
+}
+
 /* Red trains (for certain types) */
 .red-train {
     color: #ef4444;
+}
+
+/* Between rows for train position */
+.between-row {
+    background-color: rgba(245, 166, 35, 0.1);
 }
 
 /* Refresh */
@@ -267,6 +314,7 @@ header h1 {
     bottom: 0;
     left: 0;
     right: 0;
+    border-top: 1px solid #333;
 }
 
 .refresh-btn {

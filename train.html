@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tågläge</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/train.css">
 </head>
 <body>
     <div class="container">
@@ -22,6 +23,7 @@
         <main class="train-view">
             <div id="loading" class="loading">Laddar tågdata...</div>
             <div id="error-message" class="error-message"></div>
+            <div id="last-update" class="last-update">Uppdaterad: --:--:--</div>
             
             <table class="train-table" id="train-table">
                 <thead>
@@ -38,7 +40,6 @@
         
         <div class="refresh-container">
             <button id="refresh-btn" class="refresh-btn">🔄 Uppdatera</button>
-            <span id="last-update" class="last-update"></span>
         </div>
     </div>
     

@@ -25,7 +25,8 @@ $(document).ready(function() {
         schedule: [],
         currentPosition: null,
         direction: null,
-        stationNames: {}
+        stationNames: {},
+        trainsAtStations: {}
     };
     
     loadTrainData(trainNumber);
@@ -157,9 +158,142 @@ function loadTrainData(trainNumber) {
         });
 }
 
+// Determine the direction of a train based on its announcements
+function determineTrainDirection(trainAnnouncements) {
+    if (!trainAnnouncements || trainAnnouncements.length === 0) {
+        return null;
+    }
+    
+    // Sort by advertised time
+    const sorted = trainAnnouncements.slice().sort(function(a, b) {
+        return new Date(a.AdvertisedTimeAtLocation) - new Date(b.AdvertisedTimeAtLocation);
+    });
+    
+    // Get first and last locations
+    const firstStation = sorted[0].LocationSignature;
+    const lastStation = sorted[sorted.length - 1].LocationSignature;
+    
+    // Use FromLocation and ToLocation if available
+    const fromLocation = sorted[0].FromLocation?.[0]?.LocationName;
+    const toLocation = sorted[sorted.length - 1].ToLocation?.[0]?.LocationName;
+    
+    return {
+        from: firstStation,
+        to: lastStation,
+        fromLocation: fromLocation,
+        toLocation: toLocation,
+        firstTime: sorted[0].AdvertisedTimeAtLocation,
+        lastTime: sorted[sorted.length - 1].AdvertisedTimeAtLocation
+    };
+}
+
+// Check if two trains go in the same direction
+function isSameDirection(dir1, dir2) {
+    if (!dir1 || !dir2) return false;
+    
+    // Compare based on from/to locations
+    if (dir1.fromLocation && dir2.fromLocation && dir1.toLocation && dir2.toLocation) {
+        return dir1.fromLocation === dir2.fromLocation && dir1.toLocation === dir2.toLocation;
+    }
+    
+    // Fall back to comparing first and last station signatures
+    return dir1.from === dir2.from && dir1.to === dir2.to;
+}
+
+// Classify trains at each station into same direction and opposite direction
+function classifyTrainsAtStations(currentTrainNumber, currentTrainAnnouncements, allTrainAnnouncements, locationArray) {
+    const trainsAtStations = {};
+    
+    // Determine our train's direction
+    const ourDirection = determineTrainDirection(currentTrainAnnouncements);
+    
+    // Group all announcements by train number
+    const trainAnnouncementsMap = {};
+    allTrainAnnouncements.forEach(function(ann) {
+        const trainId = ann.AdvertisedTrainIdent;
+        if (!trainAnnouncementsMap[trainId]) {
+            trainAnnouncementsMap[trainId] = [];
+        }
+        trainAnnouncementsMap[trainId].push(ann);
+    });
+    
+    // Determine direction for each train
+    const trainDirections = {};
+    Object.keys(trainAnnouncementsMap).forEach(function(trainId) {
+        trainDirections[trainId] = determineTrainDirection(trainAnnouncementsMap[trainId]);
+    });
+    
+    // Initialize stations
+    locationArray.forEach(function(signature) {
+        trainsAtStations[signature] = {
+            sameDirection: [],
+            opposite: []
+        };
+    });
+    
+    // Classify trains at each station
+    allTrainAnnouncements.forEach(function(ann) {
+        const trainId = ann.AdvertisedTrainIdent;
+        const signature = ann.LocationSignature;
+        
+        // Skip our own train
+        if (trainId === currentTrainNumber) {
+            return;
+        }
+        
+        // Skip if station not in our list
+        if (!trainsAtStations[signature]) {
+            return;
+        }
+        
+        const trainDir = trainDirections[trainId];
+        
+        // Create train info object
+        const trainInfo = {
+            AdvertisedTrainIdent: trainId,
+            AdvertisedTimeAtLocation: ann.AdvertisedTimeAtLocation,
+            TimeAtLocation: ann.TimeAtLocation,
+            TrackAtLocation: ann.TrackAtLocation,
+            ActivityType: ann.ActivityType
+        };
+        
+        // Check if same direction or opposite
+        if (isSameDirection(trainDir, ourDirection)) {
+            // Avoid duplicates (same train at same station)
+            const exists = trainsAtStations[signature].sameDirection.some(function(t) {
+                return t.AdvertisedTrainIdent === trainId && t.AdvertisedTimeAtLocation === ann.AdvertisedTimeAtLocation;
+            });
+            if (!exists) {
+                trainsAtStations[signature].sameDirection.push(trainInfo);
+            }
+        } else {
+            // Avoid duplicates
+            const exists = trainsAtStations[signature].opposite.some(function(t) {
+                return t.AdvertisedTrainIdent === trainId && t.AdvertisedTimeAtLocation === ann.AdvertisedTimeAtLocation;
+            });
+            if (!exists) {
+                trainsAtStations[signature].opposite.push(trainInfo);
+            }
+        }
+    });
+    
+    // Sort trains by time at each station
+    Object.keys(trainsAtStations).forEach(function(signature) {
+        trainsAtStations[signature].sameDirection.sort(function(a, b) {
+            return new Date(a.AdvertisedTimeAtLocation) - new Date(b.AdvertisedTimeAtLocation);
+        });
+        trainsAtStations[signature].opposite.sort(function(a, b) {
+            return new Date(a.AdvertisedTimeAtLocation) - new Date(b.AdvertisedTimeAtLocation);
+        });
+    });
+    
+    return trainsAtStations;
+}
+
 function processTrainDataFromAPI(trainNumber, announcements, orderedRoute, trainPosition, allLocationSignatures) {
     // Get station names (optional, for display)
     const locationArray = Array.from(allLocationSignatures);
+    const date = new Date().toISOString().split('T')[0];
     
     if (locationArray.length > 0) {
         const locationFilters = locationArray.map(function(l) { 
@@ -179,21 +313,55 @@ function processTrainDataFromAPI(trainNumber, announcements, orderedRoute, train
             </QUERY>
         `;
         
-        TrafikverketAPI.request(stationQuery)
-            .then(function(stationData) {
-                const stations = stationData.RESPONSE?.RESULT?.[0]?.TrainStation || [];
-                const stationNames = {};
-                stations.forEach(function(station) {
-                    stationNames[station.LocationSignature] = station.AdvertisedLocationName;
-                });
-                window.trainData.stationNames = stationNames;
-                
-                processTrainData(trainNumber, announcements, orderedRoute, trainPosition);
-            })
-            .catch(function() {
-                // Station names are optional, continue without them
-                processTrainData(trainNumber, announcements, orderedRoute, trainPosition);
+        // Query to get other trains at the same locations
+        const otherTrainsQuery = `
+            <QUERY objecttype="TrainAnnouncement" schemaversion="1.6" orderby="AdvertisedTimeAtLocation">
+                <FILTER>
+                    <AND>
+                        <OR>
+                            ${locationFilters}
+                        </OR>
+                        <EQ name="ScheduledDepartureDateTime" value="${date}" />
+                        <EXISTS name="TimeAtLocation" value="true" />
+                    </AND>
+                </FILTER>
+                <INCLUDE>ActivityType</INCLUDE>
+                <INCLUDE>AdvertisedTimeAtLocation</INCLUDE>
+                <INCLUDE>AdvertisedTrainIdent</INCLUDE>
+                <INCLUDE>LocationSignature</INCLUDE>
+                <INCLUDE>ToLocation</INCLUDE>
+                <INCLUDE>FromLocation</INCLUDE>
+                <INCLUDE>TimeAtLocation</INCLUDE>
+                <INCLUDE>TrackAtLocation</INCLUDE>
+            </QUERY>
+        `;
+        
+        // Fetch both station names and other trains in parallel
+        Promise.all([
+            TrafikverketAPI.request(stationQuery).catch(function() { return { RESPONSE: { RESULT: [{ TrainStation: [] }] } }; }),
+            TrafikverketAPI.request(otherTrainsQuery).catch(function() { return { RESPONSE: { RESULT: [{ TrainAnnouncement: [] }] } }; })
+        ]).then(function(results) {
+            const stationData = results[0];
+            const otherTrainsData = results[1];
+            
+            // Process station names
+            const stations = stationData.RESPONSE?.RESULT?.[0]?.TrainStation || [];
+            const stationNames = {};
+            stations.forEach(function(station) {
+                stationNames[station.LocationSignature] = station.AdvertisedLocationName;
             });
+            window.trainData.stationNames = stationNames;
+            
+            // Process other trains data
+            const otherTrainAnnouncements = otherTrainsData.RESPONSE?.RESULT?.[0]?.TrainAnnouncement || [];
+            const trainsAtStations = classifyTrainsAtStations(trainNumber, announcements, otherTrainAnnouncements, locationArray);
+            window.trainData.trainsAtStations = trainsAtStations;
+            
+            processTrainData(trainNumber, announcements, orderedRoute, trainPosition);
+        }).catch(function() {
+            // Continue without station names or other trains data
+            processTrainData(trainNumber, announcements, orderedRoute, trainPosition);
+        });
     } else {
         processTrainData(trainNumber, announcements, orderedRoute, trainPosition);
     }
@@ -355,6 +523,9 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
     // Get station names map for display
     const stationNames = (window.trainData && window.trainData.stationNames) || {};
     
+    // Get trains at stations data
+    const trainsAtStations = (window.trainData && window.trainData.trainsAtStations) || {};
+    
     stations.forEach(function(station, index) {
         const $row = $('<tr>');
         
@@ -407,9 +578,25 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
             $trainCell.append($noInfoSpan);
         }
         
+        // Add same direction trains from other trains
+        const stationTrains = trainsAtStations[station.signature] || { sameDirection: [], opposite: [] };
+        stationTrains.sameDirection.forEach(function(train) {
+            const $trainSpan = $('<div>')
+                .addClass('train-item same-train')
+                .text(train.AdvertisedTrainIdent + ' ' + formatTime(train.AdvertisedTimeAtLocation));
+            $trainCell.append($trainSpan);
+        });
+        
         $row.append($trainCell);
         
+        // Column 3: Meeting trains (opposite direction)
         const $meetCell = $('<td>').addClass('meeting-cell');
+        stationTrains.opposite.forEach(function(train) {
+            const $trainSpan = $('<div>')
+                .addClass('train-item meeting-train')
+                .text(train.AdvertisedTrainIdent + ' ' + formatTime(train.AdvertisedTimeAtLocation));
+            $meetCell.append($trainSpan);
+        });
         $row.append($meetCell);
         
         $tbody.append($row);

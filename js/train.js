@@ -1,3 +1,14 @@
+// Helper function to escape XML special characters
+function escapeXml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+}
+
 $(document).ready(function() {
     const urlParams = new URLSearchParams(window.location.search);
     const trainNumber = urlParams.get('train');
@@ -34,13 +45,14 @@ function loadTrainData(trainNumber) {
     $('#train-table').hide();
     
     const date = new Date().toISOString().split('T')[0];
+    const escapedTrainNumber = escapeXml(trainNumber);
     
     // Step 1: Get train announcements with ViaLocations
     const announcementQuery = `
         <QUERY objecttype="TrainAnnouncement" schemaversion="1.6" orderby="AdvertisedTimeAtLocation">
             <FILTER>
                 <AND>
-                    <EQ name="AdvertisedTrainIdent" value="${trainNumber}" />
+                    <EQ name="AdvertisedTrainIdent" value="${escapedTrainNumber}" />
                     <EQ name="ScheduledDepartureDateTime" value="${date}" />
                 </AND>
             </FILTER>
@@ -119,7 +131,7 @@ function loadTrainData(trainNumber) {
             const positionQuery = `
                 <QUERY objecttype="TrainPosition" schemaversion="1.1">
                     <FILTER>
-                        <EQ name="Train.AdvertisedTrainNumber" value="${trainNumber}" />
+                        <EQ name="Train.AdvertisedTrainNumber" value="${escapedTrainNumber}" />
                     </FILTER>
                     <INCLUDE>Train.AdvertisedTrainNumber</INCLUDE>
                     <INCLUDE>Position.WGS84</INCLUDE>
@@ -151,7 +163,7 @@ function processTrainDataFromAPI(trainNumber, announcements, orderedRoute, train
     
     if (locationArray.length > 0) {
         const locationFilters = locationArray.map(function(l) { 
-            return '<EQ name="LocationSignature" value="' + l + '" />'; 
+            return '<EQ name="LocationSignature" value="' + escapeXml(l) + '" />'; 
         }).join('');
         
         const stationQuery = `

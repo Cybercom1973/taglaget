@@ -33,29 +33,158 @@ function loadTrainData(trainNumber) {
     $('#error-message').hide();
     $('#train-table').hide();
     
-    $.ajax({
-        url: '/api/train/' + trainNumber + '/full-route',
-        method: 'GET',
-        success: function(response) {
-            if (response.announcements && response.announcements.length > 0) {
-                const stationNames = {};
-                if (response.allLocations) {
-                    response.allLocations.forEach(function(station) {
-                        stationNames[station.LocationSignature] = station.AdvertisedLocationName;
+    const date = new Date().toISOString().split('T')[0];
+    
+    // Step 1: Get train announcements with ViaLocations
+    const announcementQuery = `
+        <QUERY objecttype="TrainAnnouncement" schemaversion="1.6" orderby="AdvertisedTimeAtLocation">
+            <FILTER>
+                <AND>
+                    <EQ name="AdvertisedTrainIdent" value="${trainNumber}" />
+                    <EQ name="ScheduledDepartureDateTime" value="${date}" />
+                </AND>
+            </FILTER>
+            <INCLUDE>ActivityType</INCLUDE>
+            <INCLUDE>AdvertisedTimeAtLocation</INCLUDE>
+            <INCLUDE>AdvertisedTrainIdent</INCLUDE>
+            <INCLUDE>LocationSignature</INCLUDE>
+            <INCLUDE>ToLocation</INCLUDE>
+            <INCLUDE>FromLocation</INCLUDE>
+            <INCLUDE>ViaFromLocation</INCLUDE>
+            <INCLUDE>ViaToLocation</INCLUDE>
+            <INCLUDE>TimeAtLocation</INCLUDE>
+            <INCLUDE>TimeAtLocationWithSeconds</INCLUDE>
+            <INCLUDE>TrackAtLocation</INCLUDE>
+            <INCLUDE>Canceled</INCLUDE>
+        </QUERY>
+    `;
+    
+    TrafikverketAPI.request(announcementQuery)
+        .then(function(announcementData) {
+            const announcements = announcementData.RESPONSE?.RESULT?.[0]?.TrainAnnouncement || [];
+            
+            if (announcements.length === 0) {
+                showError('Tåg ' + trainNumber + ' hittades inte för idag');
+                return;
+            }
+            
+            // Step 2: Collect all locations including ViaFromLocation and ViaToLocation
+            const allLocationSignatures = new Set();
+            const orderedLocations = [];
+            
+            announcements.forEach(function(ann) {
+                // Add ViaFromLocation (locations before this announced station)
+                if (ann.ViaFromLocation && ann.ViaFromLocation.length > 0) {
+                    ann.ViaFromLocation.forEach(function(via) {
+                        if (!allLocationSignatures.has(via.LocationName)) {
+                            allLocationSignatures.add(via.LocationName);
+                            orderedLocations.push({
+                                signature: via.LocationName,
+                                isAnnounced: false,
+                                order: via.Order || 0
+                            });
+                        }
                     });
                 }
+                
+                // Add the announced location
+                if (!allLocationSignatures.has(ann.LocationSignature)) {
+                    allLocationSignatures.add(ann.LocationSignature);
+                    orderedLocations.push({
+                        signature: ann.LocationSignature,
+                        isAnnounced: true,
+                        advertisedTime: ann.AdvertisedTimeAtLocation,
+                        actualTime: ann.TimeAtLocation,
+                        track: ann.TrackAtLocation,
+                        activityType: ann.ActivityType
+                    });
+                }
+                
+                // Add ViaToLocation (locations after this announced station)
+                if (ann.ViaToLocation && ann.ViaToLocation.length > 0) {
+                    ann.ViaToLocation.forEach(function(via) {
+                        if (!allLocationSignatures.has(via.LocationName)) {
+                            allLocationSignatures.add(via.LocationName);
+                            orderedLocations.push({
+                                signature: via.LocationName,
+                                isAnnounced: false,
+                                order: via.Order || 0
+                            });
+                        }
+                    });
+                }
+            });
+            
+            // Step 3: Try to get train position (optional)
+            const positionQuery = `
+                <QUERY objecttype="TrainPosition" schemaversion="1.1">
+                    <FILTER>
+                        <EQ name="Train.AdvertisedTrainNumber" value="${trainNumber}" />
+                    </FILTER>
+                    <INCLUDE>Train.AdvertisedTrainNumber</INCLUDE>
+                    <INCLUDE>Position.WGS84</INCLUDE>
+                    <INCLUDE>Speed</INCLUDE>
+                    <INCLUDE>Bearing</INCLUDE>
+                    <INCLUDE>TimeStamp</INCLUDE>
+                </QUERY>
+            `;
+            
+            TrafikverketAPI.request(positionQuery)
+                .then(function(positionData) {
+                    const trainPosition = positionData.RESPONSE?.RESULT?.[0]?.TrainPosition?.[0] || null;
+                    processTrainDataFromAPI(trainNumber, announcements, orderedLocations, trainPosition, allLocationSignatures);
+                })
+                .catch(function() {
+                    // Position data is optional, continue without it
+                    processTrainDataFromAPI(trainNumber, announcements, orderedLocations, null, allLocationSignatures);
+                });
+        })
+        .catch(function(error) {
+            console.error('API Error:', error);
+            showError('Fel vid hämtning av tågdata: ' + error.message);
+        });
+}
+
+function processTrainDataFromAPI(trainNumber, announcements, orderedRoute, trainPosition, allLocationSignatures) {
+    // Get station names (optional, for display)
+    const locationArray = Array.from(allLocationSignatures);
+    
+    if (locationArray.length > 0) {
+        const locationFilters = locationArray.map(function(l) { 
+            return '<EQ name="LocationSignature" value="' + l + '" />'; 
+        }).join('');
+        
+        const stationQuery = `
+            <QUERY objecttype="TrainStation" schemaversion="1.4" namespace="rail.infrastructure">
+                <FILTER>
+                    <OR>
+                        ${locationFilters}
+                    </OR>
+                </FILTER>
+                <INCLUDE>LocationSignature</INCLUDE>
+                <INCLUDE>AdvertisedLocationName</INCLUDE>
+                <INCLUDE>Geometry</INCLUDE>
+            </QUERY>
+        `;
+        
+        TrafikverketAPI.request(stationQuery)
+            .then(function(stationData) {
+                const stations = stationData.RESPONSE?.RESULT?.[0]?.TrainStation || [];
+                const stationNames = {};
+                stations.forEach(function(station) {
+                    stationNames[station.LocationSignature] = station.AdvertisedLocationName;
+                });
                 window.trainData.stationNames = stationNames;
                 
-                processTrainData(trainNumber, response.announcements, response.orderedRoute, response.trainPosition);
-            } else {
-                showError('Tåg ' + trainNumber + ' hittades inte för idag');
-            }
-        },
-        error: function(xhr, status, error) {
-            console.error('API Error:', error);
-            showError('Fel vid hämtning av tågdata: ' + error);
-        }
-    });
+                processTrainData(trainNumber, announcements, orderedRoute, trainPosition);
+            })
+            .catch(function() {
+                // Station names are optional, continue without them
+                processTrainData(trainNumber, announcements, orderedRoute, trainPosition);
+            });
+    } else {
+        processTrainData(trainNumber, announcements, orderedRoute, trainPosition);
+    }
 }
 
 function processTrainData(trainNumber, announcements, orderedRoute, trainPosition) {

@@ -330,11 +330,6 @@ header h1 {
     background-color: #444;
 }
 
-.last-update {
-    color: #666;
-    font-size: 12px;
-}
-
 /* Responsive */
 @media (min-width: 768px) {
     .container {

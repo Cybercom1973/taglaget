@@ -480,13 +480,20 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
         return new Date(a.advertisedTime) - new Date(b.advertisedTime);
     });
     
+    // Sort order constants for via stations
+    var VIA_TO_SORT_ORDER_BASE = 1;      // ViaToLocations come right after parent
+    var VIA_FROM_SORT_ORDER_BASE = 1000; // ViaFromLocations come late in segment
+    
     sortedAnnounced.forEach(function(station, index) {
+        // Get previous announced station's time for ViaFromLocation sorting
+        var prevAnnouncedTime = index > 0 ? sortedAnnounced[index - 1].advertisedTime : null;
+        
         if (station.viaFromLocations && station.viaFromLocations.length > 0) {
             const sortedVia = station.viaFromLocations.slice().sort(function(a, b) {
                 return (a.Order || 0) - (b.Order || 0);
             });
             
-            sortedVia.forEach(function(via) {
+            sortedVia.forEach(function(via, viaIndex) {
                 if (!addedLocations.has(via.LocationName)) {
                     addedLocations.add(via.LocationName);
                     stations.push({
@@ -494,7 +501,11 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
                         isAnnounced: false,
                         departed: false,
                         arrived: false,
-                        isCurrent: false
+                        isCurrent: false,
+                        // ViaFromLocations come after ViaToLocations of previous station
+                        // Use high order number to place them later in the segment
+                        _sortTime: prevAnnouncedTime,
+                        _sortOrder: VIA_FROM_SORT_ORDER_BASE + viaIndex
                     });
                 }
             });
@@ -510,7 +521,7 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
                 return (a.Order || 0) - (b.Order || 0);
             });
             
-            sortedVia.forEach(function(via) {
+            sortedVia.forEach(function(via, viaIndex) {
                 if (!addedLocations.has(via.LocationName)) {
                     addedLocations.add(via.LocationName);
                     stations.push({
@@ -518,12 +529,46 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
                         isAnnounced: false,
                         departed: false,
                         arrived: false,
-                        isCurrent: false
+                        isCurrent: false,
+                        // ViaToLocations come right after parent announced station
+                        // Use low order number to place them early in the segment
+                        _sortTime: station.advertisedTime,
+                        _sortOrder: VIA_TO_SORT_ORDER_BASE + viaIndex
                     });
                 }
             });
         }
     });
+    
+    // Sort stations by advertised time (earliest → latest)
+    // Via stations use their parent's time for sorting
+    stations.sort(function(a, b) {
+        var timeA = a.advertisedTime || a._sortTime;
+        var timeB = b.advertisedTime || b._sortTime;
+        
+        if (timeA && timeB) {
+            var dateA = new Date(timeA);
+            var dateB = new Date(timeB);
+            
+            // If same time, use sort order (announced stations with order 0 come before via stations with order > 0)
+            if (dateA.getTime() === dateB.getTime()) {
+                var orderA = a._sortOrder || 0;
+                var orderB = b._sortOrder || 0;
+                return orderA - orderB;
+            }
+            
+            return dateA - dateB;
+        }
+        
+        // Fallback: keep original order
+        return 0;
+    });
+    
+    // Clean up temporary sort fields
+    for (var j = 0; j < stations.length; j++) {
+        delete stations[j]._sortTime;
+        delete stations[j]._sortOrder;
+    }
     
     let currentIndex = -1;
     for (let i = 0; i < stations.length; i++) {

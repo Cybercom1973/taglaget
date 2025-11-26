@@ -140,19 +140,24 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
         
         var trainDirection = determineTrainDirection(trainsByNumber[trainNum]);
         
+        // Get destination signature from trainDirection (already computed from sorted announcements)
+        var destinationSignature = trainDirection ? trainDirection.to : '?';
+        
         if (trainDirection && isSameDirection(currentDirection, trainDirection)) {
             trainsAtStations[stationSig].sameDirection.push({
                 trainNumber: trainNum,
                 time: position.time,
                 actualTime: position.actualTime,
-                track: position.track
+                track: position.track,
+                destinationSignature: destinationSignature
             });
         } else if (trainDirection) {
             trainsAtStations[stationSig].opposite.push({
                 trainNumber: trainNum,
                 time: position.time,
                 actualTime: position.actualTime,
-                track: position.track
+                track: position.track,
+                destinationSignature: destinationSignature
             });
         }
     });
@@ -701,10 +706,13 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
                     .attr('rel', 'noopener noreferrer')
                     .text(train.trainNumber);
                 
+                // Get destination signature for the train
+                var destinationSignature = train.destinationSignature || '?';
+                
                 var $trainSpan = $('<div>')
                     .addClass('train-item same-train')
                     .append($trainLink)
-                    .append(' ' + formatTime(train.time) + ' (' + delay + ')');
+                    .append(' ' + destinationSignature + ' (' + delay + ')');
                 
                 $trainCell.append($trainSpan);
             });
@@ -726,10 +734,13 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
                     .attr('rel', 'noopener noreferrer')
                     .text(train.trainNumber);
                 
+                // Get destination signature for the train
+                var destinationSignature = train.destinationSignature || '?';
+                
                 var $trainSpan = $('<div>')
                     .addClass('train-item meeting-train')
                     .append($trainLink)
-                    .append(' ' + formatTime(train.time) + ' (' + delay + ')');
+                    .append(' ' + destinationSignature + ' (' + delay + ')');
                 
                 $meetCell.append($trainSpan);
             });

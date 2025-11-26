@@ -252,12 +252,12 @@ header h1 {
     margin-bottom: 3px;
 }
 
-.same-train {
-    color: #4ade80;
+.same-origin {
+    color: #28a745;  /* Green - trains from same origin */
 }
 
-.meeting-train {
-    color: #4ade80;
+.same-destination {
+    color: #007bff;  /* Blue - trains to same destination */
 }
 
 /* Current train position - highlighted */
@@ -365,22 +365,22 @@ header h1 {
     color: inherit;
 }
 
-/* Specific styling for same direction trains */
-.same-train a {
+/* Specific styling for same origin trains (left column) */
+.same-origin a {
     color: #28a745;
 }
 
-.same-train a:hover {
+.same-origin a:hover {
     color: #1e7e34;
 }
 
-/* Specific styling for meeting trains */
-.meeting-train a {
-    color: #dc3545;
+/* Specific styling for same destination trains (right column) */
+.same-destination a {
+    color: #007bff;
 }
 
-.meeting-train a:hover {
-    color: #c82333;
+.same-destination a:hover {
+    color: #0056b3;
 }
 
 /* Responsive */

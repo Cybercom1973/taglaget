@@ -9,36 +9,55 @@ function escapeXml(str) {
         .replace(/'/g, '&apos;');
 }
 
-// Determine train direction based on first and last station
+// Determine train direction based on FromLocation and ToLocation from API
 function determineTrainDirection(trainAnnouncements) {
     if (!trainAnnouncements || trainAnnouncements.length === 0) return null;
     
+    // Find first announcement with FromLocation (origin)
+    var fromLocation = null;
+    for (var i = 0; i < trainAnnouncements.length; i++) {
+        if (trainAnnouncements[i].FromLocation && trainAnnouncements[i].FromLocation[0]) {
+            fromLocation = trainAnnouncements[i].FromLocation[0].LocationName;
+            break;
+        }
+    }
+    
+    // Find first announcement with ToLocation (destination)
+    var toLocation = null;
+    for (var i = 0; i < trainAnnouncements.length; i++) {
+        if (trainAnnouncements[i].ToLocation && trainAnnouncements[i].ToLocation[0]) {
+            toLocation = trainAnnouncements[i].ToLocation[0].LocationName;
+            break;
+        }
+    }
+    
+    // Get first and last station signatures for destination display
     var sorted = trainAnnouncements.slice().sort(function(a, b) {
         return new Date(a.AdvertisedTimeAtLocation) - new Date(b.AdvertisedTimeAtLocation);
     });
-    
-    var first = sorted[0];
     var last = sorted[sorted.length - 1];
     
     return {
-        from: first.LocationSignature,
-        to: last.LocationSignature,
-        fromLocation: first.FromLocation && first.FromLocation[0] ? first.FromLocation[0].LocationName : null,
-        toLocation: last.ToLocation && last.ToLocation[0] ? last.ToLocation[0].LocationName : null
+        fromLocation: fromLocation,
+        toLocation: toLocation,
+        to: last.LocationSignature  // Keep for destination display
     };
 }
 
-// Compare if two trains go in the same direction
-function isSameDirection(dir1, dir2) {
+// Check if two trains have the same origin
+function hasSameOrigin(dir1, dir2) {
     if (!dir1 || !dir2) return false;
+    if (!dir1.fromLocation || !dir2.fromLocation) return false;
     
-    // Compare start and end stations
-    var sameFromTo = (dir1.from === dir2.from && dir1.to === dir2.to);
-    var sameLocations = (dir1.fromLocation && dir2.fromLocation && 
-                         dir1.fromLocation === dir2.fromLocation && 
-                         dir1.toLocation === dir2.toLocation);
+    return dir1.fromLocation === dir2.fromLocation;
+}
+
+// Check if two trains have the same destination
+function hasSameDestination(dir1, dir2) {
+    if (!dir1 || !dir2) return false;
+    if (!dir1.toLocation || !dir2.toLocation) return false;
     
-    return sameFromTo || sameLocations;
+    return dir1.toLocation === dir2.toLocation;
 }
 
 // Format delay information
@@ -133,8 +152,8 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
         
         if (!trainsAtStations[stationSig]) {
             trainsAtStations[stationSig] = {
-                sameDirection: [],
-                opposite: []
+                sameOrigin: [],
+                sameDestination: []
             };
         }
         
@@ -143,16 +162,20 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
         // Get destination signature from trainDirection (already computed from sorted announcements)
         var destinationSignature = trainDirection ? trainDirection.to : '?';
         
-        if (trainDirection && isSameDirection(currentDirection, trainDirection)) {
-            trainsAtStations[stationSig].sameDirection.push({
+        // Left column: Trains from the same origin
+        if (trainDirection && hasSameOrigin(currentDirection, trainDirection)) {
+            trainsAtStations[stationSig].sameOrigin.push({
                 trainNumber: trainNum,
                 time: position.time,
                 actualTime: position.actualTime,
                 track: position.track,
                 destinationSignature: destinationSignature
             });
-        } else if (trainDirection) {
-            trainsAtStations[stationSig].opposite.push({
+        }
+        
+        // Right column: Trains to the same destination
+        if (trainDirection && hasSameDestination(currentDirection, trainDirection)) {
+            trainsAtStations[stationSig].sameDestination.push({
                 trainNumber: trainNum,
                 time: position.time,
                 actualTime: position.actualTime,
@@ -164,10 +187,10 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
     
     // Sort trains by time
     Object.keys(trainsAtStations).forEach(function(sig) {
-        trainsAtStations[sig].sameDirection.sort(function(a, b) {
+        trainsAtStations[sig].sameOrigin.sort(function(a, b) {
             return new Date(a.time) - new Date(b.time);
         });
-        trainsAtStations[sig].opposite.sort(function(a, b) {
+        trainsAtStations[sig].sameDestination.sort(function(a, b) {
             return new Date(a.time) - new Date(b.time);
         });
     });
@@ -691,12 +714,12 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
             $trainCell.append($timeSpan);
         }
         
-        // Show other trains in the same direction
+        // Show other trains from the same origin (left column)
         var trainsData = window.trainData.trainsAtStations || {};
         var stationTrains = trainsData[station.signature];
         
-        if (stationTrains && stationTrains.sameDirection) {
-            stationTrains.sameDirection.forEach(function(train) {
+        if (stationTrains && stationTrains.sameOrigin) {
+            stationTrains.sameOrigin.forEach(function(train) {
                 var delay = formatDelay(train.time, train.actualTime);
                 
                 // Create clickable link for train number
@@ -710,7 +733,7 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
                 var destinationSignature = train.destinationSignature || '?';
                 
                 var $trainSpan = $('<div>')
-                    .addClass('train-item same-train')
+                    .addClass('train-item same-origin')
                     .append($trainLink)
                     .append(' ' + destinationSignature + ' (' + delay + ')');
                 
@@ -720,11 +743,11 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         
         $row.append($trainCell);
         
-        // Column 3 - Meeting trains
+        // Column 3 - Trains to the same destination (right column)
         const $meetCell = $('<td>').addClass('meeting-cell');
         
-        if (stationTrains && stationTrains.opposite) {
-            stationTrains.opposite.forEach(function(train) {
+        if (stationTrains && stationTrains.sameDestination) {
+            stationTrains.sameDestination.forEach(function(train) {
                 var delay = formatDelay(train.time, train.actualTime);
                 
                 // Create clickable link for train number
@@ -738,7 +761,7 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
                 var destinationSignature = train.destinationSignature || '?';
                 
                 var $trainSpan = $('<div>')
-                    .addClass('train-item meeting-train')
+                    .addClass('train-item same-destination')
                     .append($trainLink)
                     .append(' ' + destinationSignature + ' (' + delay + ')');
                 

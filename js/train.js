@@ -495,6 +495,8 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
             
             sortedVia.forEach(function(via, viaIndex) {
                 // Skip if this is an announced station (will be added with proper time later)
+                // Note: via.LocationName is a station signature (e.g., "Em", "Lu") in the Trafikverket API,
+                // which matches the announcementMap key (ann.LocationSignature)
                 if (announcementMap[via.LocationName]) {
                     return;
                 }
@@ -527,6 +529,8 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
             
             sortedVia.forEach(function(via, viaIndex) {
                 // Skip if this is an announced station (will be added with proper time later)
+                // Note: via.LocationName is a station signature (e.g., "Em", "Lu") in the Trafikverket API,
+                // which matches the announcementMap key (ann.LocationSignature)
                 if (announcementMap[via.LocationName]) {
                     return;
                 }

@@ -1,10 +1,10 @@
 // API Configuration
 const API_CONFIG = {
-    // For development without backend, set your API key here (NOT recommended for production)
-    // apiKey: 'YOUR_API_KEY_HERE',
+    // API key for direct Trafikverket API calls
+    apiKey: '4759059607504e98ba567480d71df54e',
     
-    // For production, use the backend proxy
-    useProxy: true,
+    // Use direct API calls (no backend proxy needed)
+    useProxy: false,
     proxyUrl: '/api',
     
     // Trafikverket API endpoint
@@ -13,11 +13,11 @@ const API_CONFIG = {
 
 // API wrapper for Trafikverket
 const TrafikverketAPI = {
-    apiKey: null,
+    apiKey: API_CONFIG.apiKey,
     
     // Initialize with API key
     init: function(apiKey) {
-        this.apiKey = apiKey;
+        this.apiKey = apiKey || API_CONFIG.apiKey;
     },
     
     // Make API request to Trafikverket

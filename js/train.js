@@ -60,8 +60,12 @@ function formatDelay(advertisedTime, actualTime) {
 }
 
 // Classify all trains per station
-function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOtherTrains) {
+function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOtherTrains, trainGPSPositions) {
     var currentDirection = determineTrainDirection(currentAnnouncements);
+    
+    // Calculate time window: only trains passed within the last 15 minutes
+    var now = new Date();
+    var recentTimeLimit = new Date(now.getTime() - 15 * 60000); // 15 min ago
     
     // Group all trains by train number
     var trainsByNumber = {};
@@ -100,8 +104,23 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
             }
         }
         
-        if (currentPosition) {
+        if (!currentPosition) return; // Train hasn't passed any station yet
+        
+        // NEW: Filter based on GPS position
+        var hasGPS = trainGPSPositions && trainGPSPositions[trainNum];
+        
+        if (hasGPS) {
+            // Train has GPS → it's currently running → show it! ✅
             trainCurrentPositions[trainNum] = currentPosition;
+        } else {
+            // No GPS → check if it passed recently
+            var passedTime = new Date(currentPosition.actualTime);
+            
+            if (passedTime >= recentTimeLimit) {
+                // Passed within 15 min → show it ✅
+                trainCurrentPositions[trainNum] = currentPosition;
+            }
+            // Otherwise: too old, don't show ❌
         }
     });
     
@@ -358,8 +377,54 @@ function processTrainDataFromAPI(trainNumber, announcements, orderedRoute, train
                 TrafikverketAPI.request(otherTrainsQuery)
                     .then(function(otherTrainsData) {
                         var otherTrains = otherTrainsData.RESPONSE?.RESULT?.[0]?.TrainAnnouncement || [];
-                        classifyAndStoreTrains(trainNumber, announcements, otherTrains);
-                        processTrainData(trainNumber, announcements, orderedRoute, trainPosition);
+                        
+                        // Get unique train numbers from other trains
+                        var uniqueTrainNumbers = Array.from(new Set(
+                            otherTrains.map(function(t) { return t.AdvertisedTrainIdent; })
+                        )).filter(function(num) { return num !== trainNumber; });
+                        
+                        if (uniqueTrainNumbers.length > 0) {
+                            // Fetch GPS positions for all other trains
+                            var trainNumberFilters = uniqueTrainNumbers.map(function(num) {
+                                return '<EQ name="Train.AdvertisedTrainNumber" value="' + escapeXml(num) + '" />';
+                            }).join('');
+                            
+                            var positionsQuery = `
+                                <QUERY objecttype="TrainPosition" schemaversion="1.1">
+                                    <FILTER>
+                                        <OR>
+                                            ${trainNumberFilters}
+                                        </OR>
+                                    </FILTER>
+                                    <INCLUDE>Train.AdvertisedTrainNumber</INCLUDE>
+                                    <INCLUDE>Position.WGS84</INCLUDE>
+                                    <INCLUDE>Speed</INCLUDE>
+                                    <INCLUDE>TimeStamp</INCLUDE>
+                                </QUERY>
+                            `;
+                            
+                            TrafikverketAPI.request(positionsQuery)
+                                .then(function(posData) {
+                                    var positions = posData.RESPONSE?.RESULT?.[0]?.TrainPosition || [];
+                                    var trainPositions = {};
+                                    positions.forEach(function(pos) {
+                                        if (pos.Train && pos.Train.AdvertisedTrainNumber) {
+                                            trainPositions[pos.Train.AdvertisedTrainNumber] = pos;
+                                        }
+                                    });
+                                    
+                                    classifyAndStoreTrains(trainNumber, announcements, otherTrains, trainPositions);
+                                    processTrainData(trainNumber, announcements, orderedRoute, trainPosition);
+                                })
+                                .catch(function() {
+                                    // GPS data is optional, continue without it
+                                    classifyAndStoreTrains(trainNumber, announcements, otherTrains, {});
+                                    processTrainData(trainNumber, announcements, orderedRoute, trainPosition);
+                                });
+                        } else {
+                            classifyAndStoreTrains(trainNumber, announcements, otherTrains, {});
+                            processTrainData(trainNumber, announcements, orderedRoute, trainPosition);
+                        }
                     })
                     .catch(function() {
                         // Other trains data is optional, continue without it
@@ -501,12 +566,19 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
     const $tbody = $('#table-body');
     $tbody.empty();
     
-    stations.forEach(function(station, index) {
+    // NEW: Reverse the order so end station is at top
+    var reversedStations = stations.slice().reverse();
+    var reversedCurrentIndex = currentIndex >= 0 ? stations.length - 1 - currentIndex : -1;
+    
+    reversedStations.forEach(function(station, index) {
         const $row = $('<tr>');
+        
+        // Calculate original index for hasPassed check
+        var originalIndex = stations.length - 1 - index;
         
         const isCurrent = station.isCurrent;
         const inTransitZone = station.inTransitZone;
-        const hasPassed = station.isAnnounced && (index < currentIndex || station.departed);
+        const hasPassed = station.isAnnounced && (originalIndex < currentIndex || station.departed);
         const isUnannounced = !station.isAnnounced;
         
         const $stationCell = $('<td>').addClass('station-cell');
@@ -591,10 +663,10 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         $tbody.append($row);
     });
     
-    // Auto-scroll to current train position
-    if (currentIndex >= 0) {
+    // Auto-scroll to current train position (using reversed index)
+    if (reversedCurrentIndex >= 0) {
         setTimeout(function() {
-            var $currentRow = $('#table-body tr').eq(currentIndex);
+            var $currentRow = $('#table-body tr').eq(reversedCurrentIndex);
             if ($currentRow.length > 0) {
                 $currentRow[0].scrollIntoView({
                     behavior: 'smooth',

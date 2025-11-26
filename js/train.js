@@ -231,6 +231,17 @@ function classifyTrainsAtStations(currentTrainNumber, currentTrainAnnouncements,
         };
     });
     
+    // Helper function to add train to list if not already present
+    function addTrainIfNotExists(trainList, trainInfo) {
+        const exists = trainList.some(function(t) {
+            return t.AdvertisedTrainIdent === trainInfo.AdvertisedTrainIdent && 
+                   t.AdvertisedTimeAtLocation === trainInfo.AdvertisedTimeAtLocation;
+        });
+        if (!exists) {
+            trainList.push(trainInfo);
+        }
+    }
+    
     // Classify trains at each station
     allTrainAnnouncements.forEach(function(ann) {
         const trainId = ann.AdvertisedTrainIdent;
@@ -248,6 +259,11 @@ function classifyTrainsAtStations(currentTrainNumber, currentTrainAnnouncements,
         
         const trainDir = trainDirections[trainId];
         
+        // Skip trains with unknown direction (cannot determine same/opposite)
+        if (!trainDir) {
+            return;
+        }
+        
         // Create train info object
         const trainInfo = {
             AdvertisedTrainIdent: trainId,
@@ -259,21 +275,9 @@ function classifyTrainsAtStations(currentTrainNumber, currentTrainAnnouncements,
         
         // Check if same direction or opposite
         if (isSameDirection(trainDir, ourDirection)) {
-            // Avoid duplicates (same train at same station)
-            const exists = trainsAtStations[signature].sameDirection.some(function(t) {
-                return t.AdvertisedTrainIdent === trainId && t.AdvertisedTimeAtLocation === ann.AdvertisedTimeAtLocation;
-            });
-            if (!exists) {
-                trainsAtStations[signature].sameDirection.push(trainInfo);
-            }
+            addTrainIfNotExists(trainsAtStations[signature].sameDirection, trainInfo);
         } else {
-            // Avoid duplicates
-            const exists = trainsAtStations[signature].opposite.some(function(t) {
-                return t.AdvertisedTrainIdent === trainId && t.AdvertisedTimeAtLocation === ann.AdvertisedTimeAtLocation;
-            });
-            if (!exists) {
-                trainsAtStations[signature].opposite.push(trainInfo);
-            }
+            addTrainIfNotExists(trainsAtStations[signature].opposite, trainInfo);
         }
     });
     

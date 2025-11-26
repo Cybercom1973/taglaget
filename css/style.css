@@ -293,6 +293,13 @@ header h1 {
     color: #4ade80;
 }
 
+/* No info text for unannounced stations */
+.no-info-text {
+    color: #555;
+    font-size: 11px;
+    font-style: italic;
+}
+
 /* Red trains (for certain types) */
 .red-train {
     color: #ef4444;

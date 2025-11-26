@@ -216,9 +216,33 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
                 departed: false,
                 arrived: false,
                 isCurrent: false,
-                viaFromLocations: announcement.ViaFromLocation || [],
-                viaToLocations: announcement.ViaToLocation || []
+                viaFromLocations: [],
+                viaToLocations: []
             };
+        }
+        
+        // Merge viaFromLocations from all announcements for this location
+        if (announcement.ViaFromLocation && announcement.ViaFromLocation.length > 0) {
+            announcement.ViaFromLocation.forEach(function(via) {
+                const exists = announcementMap[location].viaFromLocations.some(function(v) {
+                    return v.LocationName === via.LocationName;
+                });
+                if (!exists) {
+                    announcementMap[location].viaFromLocations.push(via);
+                }
+            });
+        }
+        
+        // Merge viaToLocations from all announcements for this location
+        if (announcement.ViaToLocation && announcement.ViaToLocation.length > 0) {
+            announcement.ViaToLocation.forEach(function(via) {
+                const exists = announcementMap[location].viaToLocations.some(function(v) {
+                    return v.LocationName === via.LocationName;
+                });
+                if (!exists) {
+                    announcementMap[location].viaToLocations.push(via);
+                }
+            });
         }
         
         if (announcement.ActivityType === 'Ankomst') {
@@ -325,6 +349,9 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
     const $tbody = $('#table-body');
     $tbody.empty();
     
+    // Get station names map for display
+    const stationNames = window.trainData.stationNames || {};
+    
     stations.forEach(function(station, index) {
         const $row = $('<tr>');
         
@@ -334,7 +361,10 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         const isUnannounced = !station.isAnnounced;
         
         const $stationCell = $('<td>').addClass('station-cell');
-        $stationCell.text(station.signature);
+        
+        // Display station name if available, otherwise fall back to signature
+        const displayName = stationNames[station.signature] || station.signature;
+        $stationCell.text(displayName);
         
         if (hasPassed) $stationCell.addClass('passed-station');
         if (isUnannounced) $stationCell.addClass('unannounced-station');
@@ -345,7 +375,8 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         const $trainCell = $('<td>').addClass('same-direction-cell');
         
         if (isCurrent) {
-            const trackInfo = station.track ? station.signature + ' ' + station.track : station.signature;
+            const stationDisplayName = stationNames[station.signature] || station.signature;
+            const trackInfo = station.track ? stationDisplayName + ' ' + station.track : stationDisplayName;
             const $trainSpan = $('<div>')
                 .addClass('train-item current-train')
                 .text(trainNumber + ' ' + trackInfo);
@@ -367,6 +398,10 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
                 $timeSpan.append($('<span>').addClass('actual-time').text(' (' + actualTime + ')'));
             }
             $trainCell.append($timeSpan);
+        } else if (isUnannounced) {
+            // Show indicator for unannounced stations
+            const $noInfoSpan = $('<div>').addClass('no-info-text').text('(passerar)');
+            $trainCell.append($noInfoSpan);
         }
         
         $row.append($trainCell);

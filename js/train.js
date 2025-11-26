@@ -199,6 +199,17 @@ function processTrainDataFromAPI(trainNumber, announcements, orderedRoute, train
     }
 }
 
+// Helper function to merge via-locations avoiding duplicates
+function mergeViaLocations(existingVia, newVia, existingSet) {
+    if (!newVia || newVia.length === 0) return;
+    newVia.forEach(function(via) {
+        if (!existingSet.has(via.LocationName)) {
+            existingSet.add(via.LocationName);
+            existingVia.push(via);
+        }
+    });
+}
+
 function processTrainData(trainNumber, announcements, orderedRoute, trainPosition) {
     const announcementMap = {};
     
@@ -217,33 +228,25 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
                 arrived: false,
                 isCurrent: false,
                 viaFromLocations: [],
-                viaToLocations: []
+                viaToLocations: [],
+                viaFromSet: new Set(),
+                viaToSet: new Set()
             };
         }
         
         // Merge viaFromLocations from all announcements for this location
-        if (announcement.ViaFromLocation && announcement.ViaFromLocation.length > 0) {
-            announcement.ViaFromLocation.forEach(function(via) {
-                const exists = announcementMap[location].viaFromLocations.some(function(v) {
-                    return v.LocationName === via.LocationName;
-                });
-                if (!exists) {
-                    announcementMap[location].viaFromLocations.push(via);
-                }
-            });
-        }
+        mergeViaLocations(
+            announcementMap[location].viaFromLocations,
+            announcement.ViaFromLocation,
+            announcementMap[location].viaFromSet
+        );
         
         // Merge viaToLocations from all announcements for this location
-        if (announcement.ViaToLocation && announcement.ViaToLocation.length > 0) {
-            announcement.ViaToLocation.forEach(function(via) {
-                const exists = announcementMap[location].viaToLocations.some(function(v) {
-                    return v.LocationName === via.LocationName;
-                });
-                if (!exists) {
-                    announcementMap[location].viaToLocations.push(via);
-                }
-            });
-        }
+        mergeViaLocations(
+            announcementMap[location].viaToLocations,
+            announcement.ViaToLocation,
+            announcementMap[location].viaToSet
+        );
         
         if (announcement.ActivityType === 'Ankomst') {
             announcementMap[location].arrived = !!announcement.TimeAtLocation;
@@ -350,7 +353,7 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
     $tbody.empty();
     
     // Get station names map for display
-    const stationNames = window.trainData.stationNames || {};
+    const stationNames = (window.trainData && window.trainData.stationNames) || {};
     
     stations.forEach(function(station, index) {
         const $row = $('<tr>');

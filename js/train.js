@@ -494,6 +494,10 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
             });
             
             sortedVia.forEach(function(via, viaIndex) {
+                // Skip if this is an announced station (will be added with proper time later)
+                if (announcementMap[via.LocationName]) {
+                    return;
+                }
                 if (!addedLocations.has(via.LocationName)) {
                     addedLocations.add(via.LocationName);
                     stations.push({
@@ -522,6 +526,10 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
             });
             
             sortedVia.forEach(function(via, viaIndex) {
+                // Skip if this is an announced station (will be added with proper time later)
+                if (announcementMap[via.LocationName]) {
+                    return;
+                }
                 if (!addedLocations.has(via.LocationName)) {
                     addedLocations.add(via.LocationName);
                     stations.push({

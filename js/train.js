@@ -636,9 +636,19 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         if (stationTrains && stationTrains.sameDirection) {
             stationTrains.sameDirection.forEach(function(train) {
                 var delay = formatDelay(train.time, train.actualTime);
+                
+                // Create clickable link for train number
+                var $trainLink = $('<a>')
+                    .attr('href', 'https://search.stationen.info/train.html?train=' + train.trainNumber)
+                    .attr('target', '_blank')
+                    .attr('rel', 'noopener noreferrer')
+                    .text(train.trainNumber);
+                
                 var $trainSpan = $('<div>')
                     .addClass('train-item same-train')
-                    .text(train.trainNumber + ' ' + formatTime(train.time) + ' (' + delay + ')');
+                    .append($trainLink)
+                    .append(' ' + formatTime(train.time) + ' (' + delay + ')');
+                
                 $trainCell.append($trainSpan);
             });
         }
@@ -651,9 +661,19 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         if (stationTrains && stationTrains.opposite) {
             stationTrains.opposite.forEach(function(train) {
                 var delay = formatDelay(train.time, train.actualTime);
+                
+                // Create clickable link for train number
+                var $trainLink = $('<a>')
+                    .attr('href', 'https://search.stationen.info/train.html?train=' + train.trainNumber)
+                    .attr('target', '_blank')
+                    .attr('rel', 'noopener noreferrer')
+                    .text(train.trainNumber);
+                
                 var $trainSpan = $('<div>')
                     .addClass('train-item meeting-train')
-                    .text(train.trainNumber + ' ' + formatTime(train.time) + ' (' + delay + ')');
+                    .append($trainLink)
+                    .append(' ' + formatTime(train.time) + ' (' + delay + ')');
+                
                 $meetCell.append($trainSpan);
             });
         }

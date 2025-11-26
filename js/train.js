@@ -41,11 +41,17 @@ function isSameDirection(dir1, dir2) {
     return sameFromTo || sameLocations;
 }
 
-// Classify all trains per station
+// Helper function to check if a time is within a time window
+function isWithinTimeWindow(time, start, end) {
+    var t = new Date(time);
+    return t >= start && t <= end;
+}
+
+// Classify all trains per station - shows each train only at its CURRENT position
 function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOtherTrains) {
     var currentDirection = determineTrainDirection(currentAnnouncements);
     
-    // Calculate time window: only trains that are active NOW
+    // Calculate time window
     var now = new Date();
     var timeWindowStart = new Date(now.getTime() - 30 * 60000); // 30 min ago
     var timeWindowEnd = new Date(now.getTime() + 120 * 60000); // 2 hours ahead
@@ -60,33 +66,71 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
         trainsByNumber[num].push(ann);
     });
     
-    // Classify per station
-    var trainsAtStations = {};
+    // For each train, find its CURRENT position
+    var trainCurrentPositions = {}; // { trainNumber: { station, time, ... } }
     
-    allOtherTrains.forEach(function(ann) {
-        var trainNum = ann.AdvertisedTrainIdent;
-        var stationSig = ann.LocationSignature;
+    Object.keys(trainsByNumber).forEach(function(trainNum) {
+        if (trainNum === currentTrainNumber) return; // Skip our train
         
-        // Skip current train
-        if (trainNum === currentTrainNumber) return;
+        var announcements = trainsByNumber[trainNum];
         
-        // Filter on time window
-        var advertisedTime = new Date(ann.AdvertisedTimeAtLocation);
+        // Sort by time
+        var sorted = announcements.slice().sort(function(a, b) {
+            return new Date(a.AdvertisedTimeAtLocation) - new Date(b.AdvertisedTimeAtLocation);
+        });
         
-        // If train HAS passed (has TimeAtLocation):
-        // Only show if it passed recently (within 30 min)
-        if (ann.TimeAtLocation) {
-            var actualTime = new Date(ann.TimeAtLocation);
-            if (actualTime < timeWindowStart) {
-                return; // Too old, skip
-            }
-        } else {
-            // If train has NOT passed yet (no TimeAtLocation):
-            // Only show if it will pass within 2 hours
-            if (advertisedTime > timeWindowEnd) {
-                return; // Too far in future, skip
+        // Find the LAST station where train has TimeAtLocation (has actually passed)
+        var currentPosition = null;
+        
+        for (var i = sorted.length - 1; i >= 0; i--) {
+            var ann = sorted[i];
+            
+            if (ann.TimeAtLocation) {
+                // Only if it passed recently (within time window)
+                if (isWithinTimeWindow(ann.TimeAtLocation, timeWindowStart, timeWindowEnd)) {
+                    currentPosition = {
+                        station: ann.LocationSignature,
+                        time: ann.AdvertisedTimeAtLocation,
+                        actualTime: ann.TimeAtLocation,
+                        track: ann.TrackAtLocation
+                    };
+                    break; // Found current position
+                }
             }
         }
+        
+        // If no passed station found, check if train is coming soon
+        if (!currentPosition) {
+            // Find FIRST upcoming station (no TimeAtLocation yet)
+            for (var j = 0; j < sorted.length; j++) {
+                var annUpcoming = sorted[j];
+                
+                if (!annUpcoming.TimeAtLocation) {
+                    // Only if within time window
+                    if (isWithinTimeWindow(annUpcoming.AdvertisedTimeAtLocation, timeWindowStart, timeWindowEnd)) {
+                        currentPosition = {
+                            station: annUpcoming.LocationSignature,
+                            time: annUpcoming.AdvertisedTimeAtLocation,
+                            actualTime: null,
+                            track: annUpcoming.TrackAtLocation
+                        };
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (currentPosition) {
+            trainCurrentPositions[trainNum] = currentPosition;
+        }
+    });
+    
+    // Now classify trains at stations based on CURRENT POSITION only
+    var trainsAtStations = {};
+    
+    Object.keys(trainCurrentPositions).forEach(function(trainNum) {
+        var position = trainCurrentPositions[trainNum];
+        var stationSig = position.station;
         
         // Create station entry if it doesn't exist
         if (!trainsAtStations[stationSig]) {
@@ -99,20 +143,20 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
         // Determine direction for this train
         var trainDirection = determineTrainDirection(trainsByNumber[trainNum]);
         
-        // Classify
+        // Classify based on direction
         if (trainDirection && isSameDirection(currentDirection, trainDirection)) {
             trainsAtStations[stationSig].sameDirection.push({
                 trainNumber: trainNum,
-                time: ann.AdvertisedTimeAtLocation,
-                actualTime: ann.TimeAtLocation,
-                track: ann.TrackAtLocation
+                time: position.time,
+                actualTime: position.actualTime,
+                track: position.track
             });
         } else if (trainDirection) {
             trainsAtStations[stationSig].opposite.push({
                 trainNumber: trainNum,
-                time: ann.AdvertisedTimeAtLocation,
-                actualTime: ann.TimeAtLocation,
-                track: ann.TrackAtLocation
+                time: position.time,
+                actualTime: position.actualTime,
+                track: position.track
             });
         }
     });

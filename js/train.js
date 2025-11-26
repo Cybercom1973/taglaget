@@ -480,6 +480,10 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
         return new Date(a.advertisedTime) - new Date(b.advertisedTime);
     });
     
+    // Sort order constants for via stations
+    var VIA_TO_SORT_ORDER_BASE = 1;      // ViaToLocations come right after parent
+    var VIA_FROM_SORT_ORDER_BASE = 1000; // ViaFromLocations come late in segment
+    
     sortedAnnounced.forEach(function(station, index) {
         // Get previous announced station's time for ViaFromLocation sorting
         var prevAnnouncedTime = index > 0 ? sortedAnnounced[index - 1].advertisedTime : null;
@@ -501,7 +505,7 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
                         // ViaFromLocations come after ViaToLocations of previous station
                         // Use high order number to place them later in the segment
                         _sortTime: prevAnnouncedTime,
-                        _sortOrder: 1000 + viaIndex
+                        _sortOrder: VIA_FROM_SORT_ORDER_BASE + viaIndex
                     });
                 }
             });
@@ -529,7 +533,7 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
                         // ViaToLocations come right after parent announced station
                         // Use low order number to place them early in the segment
                         _sortTime: station.advertisedTime,
-                        _sortOrder: 1 + viaIndex
+                        _sortOrder: VIA_TO_SORT_ORDER_BASE + viaIndex
                     });
                 }
             });
@@ -546,7 +550,7 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
             var dateA = new Date(timeA);
             var dateB = new Date(timeB);
             
-            // If same time, use sort order (announced stations before via stations)
+            // If same time, use sort order (announced stations with order 0 come before via stations with order > 0)
             if (dateA.getTime() === dateB.getTime()) {
                 var orderA = a._sortOrder || 0;
                 var orderB = b._sortOrder || 0;

@@ -9,23 +9,20 @@ $(document).ready(function() {
     
     $('#train-label').text('Tåg ' + trainNumber);
     
-    // Store train data globally
     window.trainData = {
         trainNumber: trainNumber,
         schedule: [],
         currentPosition: null,
-        direction: null
+        direction: null,
+        stationNames: {}
     };
     
-    // Initialize
     loadTrainData(trainNumber);
     
-    // Refresh button
     $('#refresh-btn').on('click', function() {
         loadTrainData(trainNumber);
     });
     
-    // Auto-refresh every 30 seconds
     setInterval(function() {
         loadTrainData(trainNumber);
     }, 30000);
@@ -36,22 +33,22 @@ function loadTrainData(trainNumber) {
     $('#error-message').hide();
     $('#train-table').hide();
     
-    // Fetch train schedule from API
     $.ajax({
-        url: '/api/train/' + trainNumber,
+        url: '/api/train/' + trainNumber + '/full-route',
         method: 'GET',
         success: function(response) {
-            if (response.RESPONSE && response.RESPONSE.RESULT && response.RESPONSE.RESULT[0]) {
-                const announcements = response.RESPONSE.RESULT[0].TrainAnnouncement || [];
-                
-                if (announcements.length === 0) {
-                    showError('Tåg ' + trainNumber + ' hittades inte för idag');
-                    return;
+            if (response.announcements && response.announcements.length > 0) {
+                const stationNames = {};
+                if (response.allLocations) {
+                    response.allLocations.forEach(function(station) {
+                        stationNames[station.LocationSignature] = station.AdvertisedLocationName;
+                    });
                 }
+                window.trainData.stationNames = stationNames;
                 
-                processTrainData(trainNumber, announcements);
+                processTrainData(trainNumber, response.announcements, response.orderedRoute, response.trainPosition);
             } else {
-                showError('Kunde inte hämta tågdata');
+                showError('Tåg ' + trainNumber + ' hittades inte för idag');
             }
         },
         error: function(xhr, status, error) {
@@ -61,77 +58,120 @@ function loadTrainData(trainNumber) {
     });
 }
 
-function processTrainData(trainNumber, announcements) {
-    // Group by location and sort by time
-    const stationMap = {};
-    let direction = null;
+function processTrainData(trainNumber, announcements, orderedRoute, trainPosition) {
+    const announcementMap = {};
     
-    // Determine train direction from first and last station
-    const departures = announcements.filter(a => a.ActivityType === 'Avgang');
-    if (departures.length > 0) {
-        const firstStation = departures[0];
-        const lastStation = departures[departures.length - 1];
-        
-        if (firstStation.ToLocation && firstStation.ToLocation.length > 0) {
-            direction = firstStation.ToLocation[0].LocationName;
-        }
-    }
-    
-    // Process all announcements to build station list
     announcements.forEach(function(announcement) {
         const location = announcement.LocationSignature;
         
-        if (!stationMap[location]) {
-            stationMap[location] = {
+        if (!announcementMap[location]) {
+            announcementMap[location] = {
                 signature: location,
+                isAnnounced: true,
                 advertisedTime: announcement.AdvertisedTimeAtLocation,
                 actualTime: announcement.TimeAtLocation || null,
                 track: announcement.TrackAtLocation || '',
                 activityType: announcement.ActivityType,
                 departed: false,
                 arrived: false,
-                isCurrent: false
+                isCurrent: false,
+                viaFromLocations: announcement.ViaFromLocation || [],
+                viaToLocations: announcement.ViaToLocation || []
             };
         }
         
-        // Update with arrival/departure info
         if (announcement.ActivityType === 'Ankomst') {
-            stationMap[location].arrived = !!announcement.TimeAtLocation;
-            stationMap[location].arrivalTime = announcement.TimeAtLocation;
+            announcementMap[location].arrived = !!announcement.TimeAtLocation;
+            announcementMap[location].arrivalTime = announcement.TimeAtLocation;
         }
         if (announcement.ActivityType === 'Avgang') {
-            stationMap[location].departed = !!announcement.TimeAtLocation;
-            stationMap[location].departureTime = announcement.TimeAtLocation;
-            stationMap[location].track = announcement.TrackAtLocation || stationMap[location].track;
+            announcementMap[location].departed = !!announcement.TimeAtLocation;
+            announcementMap[location].departureTime = announcement.TimeAtLocation;
+            announcementMap[location].track = announcement.TrackAtLocation || announcementMap[location].track;
         }
     });
     
-    // Convert to array and sort by advertised time
-    const stations = Object.values(stationMap).sort(function(a, b) {
+    const stations = [];
+    const addedLocations = new Set();
+    
+    const sortedAnnounced = Object.values(announcementMap).sort(function(a, b) {
         return new Date(a.advertisedTime) - new Date(b.advertisedTime);
     });
     
-    // Find current position (last station where train has departed or arrived but not departed next)
+    sortedAnnounced.forEach(function(station, index) {
+        if (station.viaFromLocations && station.viaFromLocations.length > 0) {
+            const sortedVia = station.viaFromLocations.slice().sort(function(a, b) {
+                return (a.Order || 0) - (b.Order || 0);
+            });
+            
+            sortedVia.forEach(function(via) {
+                if (!addedLocations.has(via.LocationName)) {
+                    addedLocations.add(via.LocationName);
+                    stations.push({
+                        signature: via.LocationName,
+                        isAnnounced: false,
+                        departed: false,
+                        arrived: false,
+                        isCurrent: false
+                    });
+                }
+            });
+        }
+        
+        if (!addedLocations.has(station.signature)) {
+            addedLocations.add(station.signature);
+            stations.push(station);
+        }
+        
+        if (station.viaToLocations && station.viaToLocations.length > 0) {
+            const sortedVia = station.viaToLocations.slice().sort(function(a, b) {
+                return (a.Order || 0) - (b.Order || 0);
+            });
+            
+            sortedVia.forEach(function(via) {
+                if (!addedLocations.has(via.LocationName)) {
+                    addedLocations.add(via.LocationName);
+                    stations.push({
+                        signature: via.LocationName,
+                        isAnnounced: false,
+                        departed: false,
+                        arrived: false,
+                        isCurrent: false
+                    });
+                }
+            });
+        }
+    });
+    
     let currentIndex = -1;
     for (let i = 0; i < stations.length; i++) {
-        if (stations[i].departed || stations[i].arrived) {
+        if (stations[i].isAnnounced && (stations[i].departed || stations[i].arrived)) {
             currentIndex = i;
         }
     }
     
-    // Mark current position
     if (currentIndex >= 0) {
-        // If departed from this station, train is between this and next
         if (stations[currentIndex].departed && currentIndex < stations.length - 1) {
             stations[currentIndex].trainBetweenHereAndNext = true;
+            
+            for (let i = currentIndex + 1; i < stations.length; i++) {
+                if (!stations[i].isAnnounced) {
+                    stations[i].inTransitZone = true;
+                } else {
+                    break;
+                }
+            }
         } else {
             stations[currentIndex].isCurrent = true;
         }
     }
     
+    if (trainPosition && trainPosition.Position) {
+        window.trainData.gpsPosition = trainPosition;
+    }
+    
     window.trainData.schedule = stations;
     window.trainData.currentPosition = currentIndex >= 0 ? stations[currentIndex] : null;
-    window.trainData.direction = direction;
     
     renderTrainTable(trainNumber, stations, currentIndex);
     
@@ -147,40 +187,40 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
     stations.forEach(function(station, index) {
         const $row = $('<tr>');
         
-        // Determine if this is where the train currently is
         const isCurrent = station.isCurrent;
-        const isBetween = station.trainBetweenHereAndNext;
-        const hasPassed = index < currentIndex || station.departed;
-        const isUpcoming = index > currentIndex && !station.departed && !station.arrived;
+        const inTransitZone = station.inTransitZone;
+        const hasPassed = station.isAnnounced && (index < currentIndex || station.departed);
+        const isUnannounced = !station.isAnnounced;
         
-        // Column 1: Station signature
-        const $stationCell = $('<td>').addClass('station-cell').text(station.signature);
-        if (hasPassed) {
-            $stationCell.addClass('passed-station');
-        }
+        const $stationCell = $('<td>').addClass('station-cell');
+        $stationCell.text(station.signature);
+        
+        if (hasPassed) $stationCell.addClass('passed-station');
+        if (isUnannounced) $stationCell.addClass('unannounced-station');
+        if (inTransitZone) $stationCell.addClass('transit-zone');
+        
         $row.append($stationCell);
         
-        // Column 2: Train position and track
         const $trainCell = $('<td>').addClass('same-direction-cell');
         
         if (isCurrent) {
-            // Train is at this station
             const trackInfo = station.track ? station.signature + ' ' + station.track : station.signature;
             const $trainSpan = $('<div>')
                 .addClass('train-item current-train')
                 .text(trainNumber + ' ' + trackInfo);
             $trainCell.append($trainSpan);
-        } else if (isBetween) {
-            // Train has left this station, show it between rows
-            $row.after(createBetweenRow(trainNumber, station));
         }
         
-        // Show scheduled time
-        if (station.advertisedTime) {
+        if (inTransitZone) {
+            const $trainSpan = $('<div>')
+                .addClass('train-item transit-train')
+                .text('← ' + trainNumber + ' på väg');
+            $trainCell.append($trainSpan);
+        }
+        
+        if (station.isAnnounced && station.advertisedTime) {
             const time = formatTime(station.advertisedTime);
-            const $timeSpan = $('<div>')
-                .addClass('scheduled-time')
-                .text(time);
+            const $timeSpan = $('<div>').addClass('scheduled-time').text(time);
             if (station.actualTime) {
                 const actualTime = formatTime(station.actualTime);
                 $timeSpan.append($('<span>').addClass('actual-time').text(' (' + actualTime + ')'));
@@ -190,28 +230,11 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         
         $row.append($trainCell);
         
-        // Column 3: Meeting trains (placeholder - requires additional API call)
         const $meetCell = $('<td>').addClass('meeting-cell');
         $row.append($meetCell);
         
         $tbody.append($row);
     });
-}
-
-function createBetweenRow(trainNumber, fromStation) {
-    const $row = $('<tr>').addClass('between-row');
-    $row.append($('<td>').addClass('station-cell').text(''));
-    
-    const $trainCell = $('<td>').addClass('same-direction-cell');
-    const $trainSpan = $('<div>')
-        .addClass('train-item current-train')
-        .text(trainNumber + ' (på väg)');
-    $trainCell.append($trainSpan);
-    $row.append($trainCell);
-    
-    $row.append($('<td>').addClass('meeting-cell'));
-    
-    return $row;
 }
 
 function formatTime(isoString) {

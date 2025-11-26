@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tågläge</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="menu-icon">☰</div>
+            <div class="logo">📍</div>
+            <h1>Tågläge</h1>
+        </header>
+        
+        <div class="train-header">
+            <span class="train-label" id="train-label">Tåg ---</span>
+            <a href="index.html" class="close-btn">✕</a>
+        </div>
+        
+        <main class="train-view">
+            <div id="loading" class="loading">Laddar tågdata...</div>
+            <div id="error-message" class="error-message"></div>
+            
+            <table class="train-table" id="train-table">
+                <thead>
+                    <tr>
+                        <th>Driftplats</th>
+                        <th>Tåg i riktningen</th>
+                        <th>Mötande</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body">
+                </tbody>
+            </table>
+        </main>
+        
+        <div class="refresh-container">
+            <button id="refresh-btn" class="refresh-btn">🔄 Uppdatera</button>
+            <span id="last-update" class="last-update"></span>
+        </div>
+    </div>
+    
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/train.js"></script>
+</body>
+</html>

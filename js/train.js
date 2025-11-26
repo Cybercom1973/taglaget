@@ -41,6 +41,12 @@ function isSameDirection(dir1, dir2) {
     return sameFromTo || sameLocations;
 }
 
+// Helper function to check if a time is within a time window
+function isWithinTimeWindow(time, start, end) {
+    var t = new Date(time);
+    return t >= start && t <= end;
+}
+
 // Classify all trains per station - shows each train only at its CURRENT position
 function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOtherTrains) {
     var currentDirection = determineTrainDirection(currentAnnouncements);
@@ -80,10 +86,8 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
             var ann = sorted[i];
             
             if (ann.TimeAtLocation) {
-                var actualTime = new Date(ann.TimeAtLocation);
-                
                 // Only if it passed recently (within time window)
-                if (actualTime >= timeWindowStart) {
+                if (isWithinTimeWindow(ann.TimeAtLocation, timeWindowStart, timeWindowEnd)) {
                     currentPosition = {
                         station: ann.LocationSignature,
                         time: ann.AdvertisedTimeAtLocation,
@@ -102,10 +106,8 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
                 var annUpcoming = sorted[j];
                 
                 if (!annUpcoming.TimeAtLocation) {
-                    var advertisedTime = new Date(annUpcoming.AdvertisedTimeAtLocation);
-                    
                     // Only if within time window
-                    if (advertisedTime <= timeWindowEnd && advertisedTime >= timeWindowStart) {
+                    if (isWithinTimeWindow(annUpcoming.AdvertisedTimeAtLocation, timeWindowStart, timeWindowEnd)) {
                         currentPosition = {
                             station: annUpcoming.LocationSignature,
                             time: annUpcoming.AdvertisedTimeAtLocation,

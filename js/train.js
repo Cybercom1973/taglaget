@@ -504,7 +504,7 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
             $trainCell.append($timeSpan);
         }
         
-        // NEW: Show other trains in the same direction
+        // Show other trains in the same direction
         var trainsData = window.trainData.trainsAtStations || {};
         var stationTrains = trainsData[station.signature];
         
@@ -519,7 +519,7 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         
         $row.append($trainCell);
         
-        // NEW: Column 3 - Meeting trains
+        // Column 3 - Meeting trains
         const $meetCell = $('<td>').addClass('meeting-cell');
         
         if (stationTrains && stationTrains.opposite) {

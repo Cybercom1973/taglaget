@@ -33,47 +33,81 @@ function determineTrainDirection(trainAnnouncements) {
     var last = sorted[sorted.length - 1];
     var first = sorted[0];
     
+    // Get ordered station signatures from announcements
+    var stationOrder = sorted.map(function(ann) {
+        return ann.LocationSignature;
+    });
+    
     return {
         toLocation: toLocation,
         fromLocation: fromLocation,
         to: last.LocationSignature,  // Keep for destination display
-        from: first.LocationSignature  // First station signature
+        from: first.LocationSignature,  // First station signature
+        stationOrder: stationOrder  // Ordered list of stations for direction comparison
     };
 }
 
-// Check if two trains are going in the same direction (same origin/fromLocation)
-function hasSameDirection(dir1, dir2) {
-    if (!dir1 || !dir2) return false;
-    if (!dir1.fromLocation || !dir2.fromLocation) return false;
+// Helper function to compare direction between two trains based on station order
+// Returns: 'same' if same direction, 'opposite' if opposite direction, 'unknown' if cannot determine
+function compareDirectionByStationOrder(currentTrainStations, otherTrainStations) {
+    if (!currentTrainStations || currentTrainStations.length < 2) return 'unknown';
+    if (!otherTrainStations || otherTrainStations.length < 2) return 'unknown';
     
-    return dir1.fromLocation === dir2.fromLocation;
+    // Find shared stations between the trains
+    var sharedStations = [];
+    for (var i = 0; i < otherTrainStations.length; i++) {
+        var station = otherTrainStations[i];
+        var currentIndex = currentTrainStations.indexOf(station);
+        if (currentIndex !== -1) {
+            sharedStations.push({
+                station: station,
+                currentIndex: currentIndex,
+                otherIndex: i
+            });
+        }
+    }
+    
+    // Need at least 2 shared stations to determine direction
+    if (sharedStations.length < 2) return 'unknown';
+    
+    // Sort by currentIndex to get them in order of current train's route
+    sharedStations.sort(function(a, b) {
+        return a.currentIndex - b.currentIndex;
+    });
+    
+    // Compare the order of stations between the two trains
+    var sameDirectionCount = 0;
+    var oppositeDirectionCount = 0;
+    
+    for (var j = 0; j < sharedStations.length - 1; j++) {
+        var first = sharedStations[j];
+        var second = sharedStations[j + 1];
+        
+        // In current train: first comes before second (currentIndex order)
+        // Check if same is true for other train
+        if (first.otherIndex < second.otherIndex) {
+            sameDirectionCount++;
+        } else {
+            oppositeDirectionCount++;
+        }
+    }
+    
+    if (sameDirectionCount > oppositeDirectionCount) {
+        return 'same';
+    } else if (oppositeDirectionCount > sameDirectionCount) {
+        return 'opposite';
+    }
+    return 'unknown';
 }
 
-// Check if two trains are going in opposite directions (meeting trains)
-// Returns true for trains that are NOT going in the same direction
-function hasOppositeDirection(dir1, dir2) {
-    if (!dir1 || !dir2) return false;
-    
-    // If same direction (same origin), it's not opposite
-    if (dir1.fromLocation && dir2.fromLocation && dir1.fromLocation === dir2.fromLocation) {
-        return false;
-    }
-    
-    // Strictly opposite: one train's origin is another's destination
-    if (dir1.fromLocation && dir2.toLocation && dir1.fromLocation === dir2.toLocation) {
-        return true;
-    }
-    if (dir1.toLocation && dir2.fromLocation && dir1.toLocation === dir2.fromLocation) {
-        return true;
-    }
-    
-    // For trains with different origins and destinations, show them as meeting trains
-    // This handles cases where trains share stations but are going in different directions
-    if (dir1.toLocation && dir2.toLocation && dir1.toLocation !== dir2.toLocation) {
-        return true;
-    }
-    
-    return false;
+// Check if two trains are going in the same direction based on station order
+function hasSameDirectionByStationOrder(currentTrainStations, otherTrainStations) {
+    return compareDirectionByStationOrder(currentTrainStations, otherTrainStations) === 'same';
+}
+
+// Check if two trains are going in opposite directions based on station order
+function hasOppositeDirectionByStationOrder(currentTrainStations, otherTrainStations) {
+    return compareDirectionByStationOrder(currentTrainStations, otherTrainStations) === 'opposite';
 }
 
 // Format delay information
@@ -178,14 +212,19 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
             destinationSignature: destinationSignature
         };
         
-        // Classify: same direction (same origin) vs opposite direction (meeting trains)
-        if (trainDirection && hasSameDirection(currentDirection, trainDirection)) {
-            // Left column: Trains going in the SAME direction (same origin)
+        // Get station orders for comparison
+        var currentStationOrder = currentDirection ? currentDirection.stationOrder : [];
+        var otherStationOrder = trainDirection ? trainDirection.stationOrder : [];
+        
+        // Classify using station-based direction comparison
+        if (hasSameDirectionByStationOrder(currentStationOrder, otherStationOrder)) {
+            // Left column: Trains going in the SAME direction (based on station order)
             trainsAtStations[stationSig].sameDirection.push(trainInfo);
-        } else if (trainDirection && hasOppositeDirection(currentDirection, trainDirection)) {
-            // Right column: Trains going in OPPOSITE direction (meeting trains)
+        } else if (hasOppositeDirectionByStationOrder(currentStationOrder, otherStationOrder)) {
+            // Right column: Trains going in OPPOSITE direction (based on station order)
             trainsAtStations[stationSig].oppositeDirection.push(trainInfo);
         }
+        // If neither, the train is not shown (not enough shared stations to determine direction)
     });
     
     // Sort trains by time
@@ -766,13 +805,12 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         
         $row.append($trainCell);
         
-        // Column 3 - Trains going in opposite direction (right column) - with time
+        // Column 3 - Trains going in opposite direction (right column) - without time
         const $meetCell = $('<td>').addClass('meeting-cell');
         
         if (stationTrains && stationTrains.oppositeDirection) {
             stationTrains.oppositeDirection.forEach(function(train) {
                 var delay = formatDelay(train.time, train.actualTime);
-                var time = formatTime(train.time);
                 
                 var $trainLink = $('<a>')
                     .attr('href', 'train.html?train=' + train.trainNumber)
@@ -782,11 +820,11 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
                 
                 var destinationSignature = train.destinationSignature || '?';
                 
-                // Right column: train number + destination + time + delay
+                // Right column: train number + destination + delay (NO time)
                 var $trainSpan = $('<div>')
                     .addClass('train-item opposite-direction')
                     .append($trainLink)
-                    .append(' ' + destinationSignature + ' ' + time + ' (' + delay + ')');
+                    .append(' ' + destinationSignature + ' (' + delay + ')');
                 
                 $meetCell.append($trainSpan);
             });

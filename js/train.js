@@ -47,13 +47,13 @@ function determineTrainDirection(trainAnnouncements) {
     };
 }
 
-// Check if two trains are going in the same direction based on station order
-// Returns: true if same direction, false if opposite or unknown
-function hasSameDirectionByStationOrder(currentTrainStations, otherTrainStations) {
-    if (!currentTrainStations || currentTrainStations.length < 2) return false;
-    if (!otherTrainStations || otherTrainStations.length < 2) return false;
+// Helper function to compare direction between two trains based on station order
+// Returns: 'same' if same direction, 'opposite' if opposite direction, 'unknown' if cannot determine
+function compareDirectionByStationOrder(currentTrainStations, otherTrainStations) {
+    if (!currentTrainStations || currentTrainStations.length < 2) return 'unknown';
+    if (!otherTrainStations || otherTrainStations.length < 2) return 'unknown';
     
-    // Find at least two shared stations between the trains
+    // Find shared stations between the trains
     var sharedStations = [];
     for (var i = 0; i < otherTrainStations.length; i++) {
         var station = otherTrainStations[i];
@@ -68,15 +68,14 @@ function hasSameDirectionByStationOrder(currentTrainStations, otherTrainStations
     }
     
     // Need at least 2 shared stations to determine direction
-    if (sharedStations.length < 2) return false;
+    if (sharedStations.length < 2) return 'unknown';
     
     // Sort by currentIndex to get them in order of current train's route
     sharedStations.sort(function(a, b) {
         return a.currentIndex - b.currentIndex;
     });
     
-    // Check if the other train passes these stations in the same order
-    // Compare adjacent pairs of shared stations
+    // Compare the order of stations between the two trains
     var sameDirectionCount = 0;
     var oppositeDirectionCount = 0;
     
@@ -93,57 +92,22 @@ function hasSameDirectionByStationOrder(currentTrainStations, otherTrainStations
         }
     }
     
-    // Same direction if most comparisons show same order
-    return sameDirectionCount > oppositeDirectionCount;
+    if (sameDirectionCount > oppositeDirectionCount) {
+        return 'same';
+    } else if (oppositeDirectionCount > sameDirectionCount) {
+        return 'opposite';
+    }
+    return 'unknown';
+}
+
+// Check if two trains are going in the same direction based on station order
+function hasSameDirectionByStationOrder(currentTrainStations, otherTrainStations) {
+    return compareDirectionByStationOrder(currentTrainStations, otherTrainStations) === 'same';
 }
 
 // Check if two trains are going in opposite directions based on station order
-// Returns: true if opposite direction, false if same or unknown
 function hasOppositeDirectionByStationOrder(currentTrainStations, otherTrainStations) {
-    if (!currentTrainStations || currentTrainStations.length < 2) return false;
-    if (!otherTrainStations || otherTrainStations.length < 2) return false;
-    
-    // Find at least two shared stations between the trains
-    var sharedStations = [];
-    for (var i = 0; i < otherTrainStations.length; i++) {
-        var station = otherTrainStations[i];
-        var currentIndex = currentTrainStations.indexOf(station);
-        if (currentIndex !== -1) {
-            sharedStations.push({
-                station: station,
-                currentIndex: currentIndex,
-                otherIndex: i
-            });
-        }
-    }
-    
-    // Need at least 2 shared stations to determine direction
-    if (sharedStations.length < 2) return false;
-    
-    // Sort by currentIndex to get them in order of current train's route
-    sharedStations.sort(function(a, b) {
-        return a.currentIndex - b.currentIndex;
-    });
-    
-    // Check if the other train passes these stations in the opposite order
-    var sameDirectionCount = 0;
-    var oppositeDirectionCount = 0;
-    
-    for (var j = 0; j < sharedStations.length - 1; j++) {
-        var first = sharedStations[j];
-        var second = sharedStations[j + 1];
-        
-        // In current train: first comes before second (currentIndex order)
-        // Check if opposite is true for other train
-        if (first.otherIndex > second.otherIndex) {
-            oppositeDirectionCount++;
-        } else {
-            sameDirectionCount++;
-        }
-    }
-    
-    // Opposite direction if most comparisons show opposite order
-    return oppositeDirectionCount > sameDirectionCount;
+    return compareDirectionByStationOrder(currentTrainStations, otherTrainStations) === 'opposite';
 }
 
 // Format delay information

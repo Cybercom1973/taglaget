@@ -9,53 +9,35 @@ function escapeXml(str) {
         .replace(/'/g, '&apos;');
 }
 
-// Determine train direction based on FromLocation and ToLocation from API
+// Determine train direction based on ToLocation from API
 function determineTrainDirection(trainAnnouncements) {
     if (!trainAnnouncements || trainAnnouncements.length === 0) return null;
-    
-    // Find first announcement with FromLocation (origin)
-    var fromLocation = null;
-    for (var i = 0; i < trainAnnouncements.length; i++) {
-        if (trainAnnouncements[i].FromLocation && trainAnnouncements[i].FromLocation[0]) {
-            fromLocation = trainAnnouncements[i].FromLocation[0].LocationName;
-            break;
-        }
-    }
     
     // Find first announcement with ToLocation (destination)
     var toLocation = null;
     for (var i = 0; i < trainAnnouncements.length; i++) {
-        if (trainAnnouncements[i].ToLocation && trainAnnouncements[i].ToLocation[0]) {
-            toLocation = trainAnnouncements[i].ToLocation[0].LocationName;
+        if (trainAnnouncements[i].ToLocation && trainAnnouncements[i]. ToLocation[0]) {
+            toLocation = trainAnnouncements[i]. ToLocation[0]. LocationName;
             break;
         }
     }
     
     // Get first and last station signatures for destination display
     var sorted = trainAnnouncements.slice().sort(function(a, b) {
-        return new Date(a.AdvertisedTimeAtLocation) - new Date(b.AdvertisedTimeAtLocation);
+        return new Date(a.AdvertisedTimeAtLocation) - new Date(b. AdvertisedTimeAtLocation);
     });
     var last = sorted[sorted.length - 1];
     
     return {
-        fromLocation: fromLocation,
         toLocation: toLocation,
         to: last.LocationSignature  // Keep for destination display
     };
 }
 
-// Check if two trains have the same origin
-function hasSameOrigin(dir1, dir2) {
-    if (!dir1 || !dir2) return false;
-    if (!dir1.fromLocation || !dir2.fromLocation) return false;
-    
-    return dir1.fromLocation === dir2.fromLocation;
-}
-
 // Check if two trains have the same destination
 function hasSameDestination(dir1, dir2) {
     if (!dir1 || !dir2) return false;
-    if (!dir1.toLocation || !dir2.toLocation) return false;
+    if (! dir1.toLocation || !dir2.toLocation) return false;
     
     return dir1.toLocation === dir2.toLocation;
 }
@@ -82,14 +64,14 @@ function formatDelay(advertisedTime, actualTime) {
 function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOtherTrains, trainGPSPositions) {
     var currentDirection = determineTrainDirection(currentAnnouncements);
     
-    // Calculate time window: only trains passed within the last 15 minutes
+    // Calculate time window: only trains passed within the last 10 minutes
     var now = new Date();
-    var recentTimeLimit = new Date(now.getTime() - 15 * 60000); // 15 min ago
+    var recentTimeLimit = new Date(now. getTime() - 10 * 60000); // 10 min ago
     
     // Group all trains by train number
     var trainsByNumber = {};
     allOtherTrains.forEach(function(ann) {
-        var num = ann.AdvertisedTrainIdent;
+        var num = ann.TechnicalTrainIdent || ann.AdvertisedTrainIdent;
         if (!trainsByNumber[num]) {
             trainsByNumber[num] = [];
         }
@@ -105,7 +87,7 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
         var announcements = trainsByNumber[trainNum];
         
         // Sort by time
-        var sorted = announcements.slice().sort(function(a, b) {
+        var sorted = announcements. slice().sort(function(a, b) {
             return new Date(a.AdvertisedTimeAtLocation) - new Date(b.AdvertisedTimeAtLocation);
         });
         
@@ -114,7 +96,7 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
         for (var i = sorted.length - 1; i >= 0; i--) {
             if (sorted[i].TimeAtLocation) {
                 currentPosition = {
-                    station: sorted[i].LocationSignature,
+                    station: sorted[i]. LocationSignature,
                     time: sorted[i].AdvertisedTimeAtLocation,
                     actualTime: sorted[i].TimeAtLocation,
                     track: sorted[i].TrackAtLocation
@@ -123,24 +105,16 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
             }
         }
         
-        if (!currentPosition) return; // Train hasn't passed any station yet
+        if (! currentPosition) return; // Train hasn't passed any station yet
         
-        // NEW: Filter based on GPS position
-        var hasGPS = trainGPSPositions && trainGPSPositions[trainNum];
+        // Filter: Only show trains that passed within the last 10 minutes
+        var passedTime = new Date(currentPosition.actualTime);
         
-        if (hasGPS) {
-            // Train has GPS → it's currently running → show it! ✅
+        if (passedTime >= recentTimeLimit) {
+            // Passed within 10 min → show it ✅
             trainCurrentPositions[trainNum] = currentPosition;
-        } else {
-            // No GPS → check if it passed recently
-            var passedTime = new Date(currentPosition.actualTime);
-            
-            if (passedTime >= recentTimeLimit) {
-                // Passed within 15 min → show it ✅
-                trainCurrentPositions[trainNum] = currentPosition;
-            }
-            // Otherwise: too old, don't show ❌
         }
+        // Otherwise: too old, don't show ❌
     });
     
     // Then: Add each train ONLY at its current position
@@ -148,54 +122,49 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
     
     Object.keys(trainCurrentPositions).forEach(function(trainNum) {
         var position = trainCurrentPositions[trainNum];
-        var stationSig = position.station;
+        var stationSig = position. station;
         
-        if (!trainsAtStations[stationSig]) {
+        if (! trainsAtStations[stationSig]) {
             trainsAtStations[stationSig] = {
-                sameOrigin: [],
-                sameDestination: []
+                sameDestination: [],    // Vänster: samma destination
+                otherDestination: []    // Höger: annan destination
             };
         }
         
         var trainDirection = determineTrainDirection(trainsByNumber[trainNum]);
         
-        // Get destination signature from trainDirection (already computed from sorted announcements)
+        // Get destination signature from trainDirection
         var destinationSignature = trainDirection ? trainDirection.to : '?';
         
-        // Left column: Trains from the same origin
-        if (trainDirection && hasSameOrigin(currentDirection, trainDirection)) {
-            trainsAtStations[stationSig].sameOrigin.push({
-                trainNumber: trainNum,
-                time: position.time,
-                actualTime: position.actualTime,
-                track: position.track,
-                destinationSignature: destinationSignature
-            });
-        }
+        var trainInfo = {
+            trainNumber: trainNum,
+            time: position.time,
+            actualTime: position.actualTime,
+            track: position.track,
+            destinationSignature: destinationSignature
+        };
         
-        // Right column: Trains to the same destination
+        // Classify: same destination vs other destination
         if (trainDirection && hasSameDestination(currentDirection, trainDirection)) {
-            trainsAtStations[stationSig].sameDestination.push({
-                trainNumber: trainNum,
-                time: position.time,
-                actualTime: position.actualTime,
-                track: position.track,
-                destinationSignature: destinationSignature
-            });
+            // Left column: Trains to the SAME destination
+            trainsAtStations[stationSig].sameDestination.push(trainInfo);
+        } else if (trainDirection) {
+            // Right column: Trains to DIFFERENT destination
+            trainsAtStations[stationSig].otherDestination.push(trainInfo);
         }
     });
     
     // Sort trains by time
     Object.keys(trainsAtStations).forEach(function(sig) {
-        trainsAtStations[sig].sameOrigin.sort(function(a, b) {
-            return new Date(a.time) - new Date(b.time);
-        });
         trainsAtStations[sig].sameDestination.sort(function(a, b) {
             return new Date(a.time) - new Date(b.time);
         });
+        trainsAtStations[sig].otherDestination.sort(function(a, b) {
+            return new Date(a. time) - new Date(b. time);
+        });
     });
     
-    // Store in window.trainData
+    // Store in window. trainData
     window.trainData.trainsAtStations = trainsAtStations;
 }
 
@@ -203,7 +172,7 @@ $(document).ready(function() {
     const urlParams = new URLSearchParams(window.location.search);
     const trainNumber = urlParams.get('train');
     
-    if (!trainNumber) {
+    if (! trainNumber) {
         window.location.href = 'index.html';
         return;
     }
@@ -240,14 +209,15 @@ function loadTrainData(trainNumber) {
     // Step 1: Get train announcements with ViaLocations
     const announcementQuery = `
         <QUERY objecttype="TrainAnnouncement" schemaversion="1.6" orderby="AdvertisedTimeAtLocation">
-            <FILTER>
-                <AND>
-                    <EQ name="AdvertisedTrainIdent" value="${escapedTrainNumber}" />
-                    <EQ name="ScheduledDepartureDateTime" value="${date}" />
-                </AND>
-            </FILTER>
+        <FILTER>
+            <AND>
+                <EQ name="AdvertisedTrainIdent" value="${escapedTrainNumber}" />
+                <EQ name="ScheduledDepartureDateTime" value="${date}" />
+            </AND>
+        </FILTER>
             <INCLUDE>ActivityType</INCLUDE>
             <INCLUDE>AdvertisedTimeAtLocation</INCLUDE>
+            <INCLUDE>TechnicalTrainIdent</INCLUDE>
             <INCLUDE>AdvertisedTrainIdent</INCLUDE>
             <INCLUDE>LocationSignature</INCLUDE>
             <INCLUDE>ToLocation</INCLUDE>
@@ -263,7 +233,11 @@ function loadTrainData(trainNumber) {
     
     TrafikverketAPI.request(announcementQuery)
         .then(function(announcementData) {
-            const announcements = announcementData.RESPONSE?.RESULT?.[0]?.TrainAnnouncement || [];
+            var announcements = [];
+            if (announcementData. RESPONSE && announcementData.RESPONSE. RESULT && 
+                announcementData. RESPONSE.RESULT[0] && announcementData. RESPONSE.RESULT[0]. TrainAnnouncement) {
+                announcements = announcementData. RESPONSE.RESULT[0].TrainAnnouncement;
+            }
             
             if (announcements.length === 0) {
                 showError('Tåg ' + trainNumber + ' hittades inte för idag');
@@ -278,7 +252,7 @@ function loadTrainData(trainNumber) {
                 // Add ViaFromLocation (locations before this announced station)
                 if (ann.ViaFromLocation && ann.ViaFromLocation.length > 0) {
                     ann.ViaFromLocation.forEach(function(via) {
-                        if (!allLocationSignatures.has(via.LocationName)) {
+                        if (! allLocationSignatures.has(via.LocationName)) {
                             allLocationSignatures.add(via.LocationName);
                             orderedLocations.push({
                                 signature: via.LocationName,
@@ -290,7 +264,7 @@ function loadTrainData(trainNumber) {
                 }
                 
                 // Add the announced location
-                if (!allLocationSignatures.has(ann.LocationSignature)) {
+                if (! allLocationSignatures.has(ann. LocationSignature)) {
                     allLocationSignatures.add(ann.LocationSignature);
                     orderedLocations.push({
                         signature: ann.LocationSignature,
@@ -319,9 +293,9 @@ function loadTrainData(trainNumber) {
             
             // Step 3: Try to get train position (optional)
             const positionQuery = `
-                <QUERY objecttype="TrainPosition" schemaversion="1.1">
+                <QUERY objecttype="TrainPosition" schemaversion="1.1" namespace="järnväg. trafikinfo">
                     <FILTER>
-                        <EQ name="Train.AdvertisedTrainNumber" value="${escapedTrainNumber}" />
+                        <EQ name="Train. AdvertisedTrainNumber" value="${escapedTrainNumber}" />
                     </FILTER>
                     <INCLUDE>Train.AdvertisedTrainNumber</INCLUDE>
                     <INCLUDE>Position.WGS84</INCLUDE>
@@ -333,7 +307,12 @@ function loadTrainData(trainNumber) {
             
             TrafikverketAPI.request(positionQuery)
                 .then(function(positionData) {
-                    const trainPosition = positionData.RESPONSE?.RESULT?.[0]?.TrainPosition?.[0] || null;
+                    var trainPosition = null;
+                    if (positionData.RESPONSE && positionData.RESPONSE. RESULT && 
+                        positionData.RESPONSE.RESULT[0] && positionData. RESPONSE.RESULT[0].TrainPosition &&
+                        positionData. RESPONSE.RESULT[0].TrainPosition[0]) {
+                        trainPosition = positionData. RESPONSE.RESULT[0]. TrainPosition[0];
+                    }
                     processTrainDataFromAPI(trainNumber, announcements, orderedLocations, trainPosition, allLocationSignatures);
                 })
                 .catch(function() {
@@ -383,6 +362,7 @@ function processTrainDataFromAPI(trainNumber, announcements, orderedRoute, train
                 </FILTER>
                 <INCLUDE>ActivityType</INCLUDE>
                 <INCLUDE>AdvertisedTimeAtLocation</INCLUDE>
+                <INCLUDE>TechnicalTrainIdent</INCLUDE>
                 <INCLUDE>AdvertisedTrainIdent</INCLUDE>
                 <INCLUDE>LocationSignature</INCLUDE>
                 <INCLUDE>ToLocation</INCLUDE>
@@ -394,7 +374,12 @@ function processTrainDataFromAPI(trainNumber, announcements, orderedRoute, train
         
         TrafikverketAPI.request(stationQuery)
             .then(function(stationData) {
-                var stations = stationData.RESPONSE?.RESULT?.[0]?.TrainStation || [];
+                var stations = [];
+                if (stationData.RESPONSE && stationData.RESPONSE.RESULT && 
+                    stationData. RESPONSE.RESULT[0] && stationData.RESPONSE. RESULT[0].TrainStation) {
+                    stations = stationData.RESPONSE.RESULT[0].TrainStation;
+                }
+                
                 var stationNames = {};
                 stations.forEach(function(station) {
                     stationNames[station.LocationSignature] = station.AdvertisedLocationName;
@@ -404,21 +389,25 @@ function processTrainDataFromAPI(trainNumber, announcements, orderedRoute, train
                 // Now fetch other trains
                 TrafikverketAPI.request(otherTrainsQuery)
                     .then(function(otherTrainsData) {
-                        var otherTrains = otherTrainsData.RESPONSE?.RESULT?.[0]?.TrainAnnouncement || [];
+                        var otherTrains = [];
+                        if (otherTrainsData.RESPONSE && otherTrainsData.RESPONSE.RESULT && 
+                            otherTrainsData.RESPONSE.RESULT[0] && otherTrainsData.RESPONSE.RESULT[0].TrainAnnouncement) {
+                            otherTrains = otherTrainsData. RESPONSE.RESULT[0].TrainAnnouncement;
+                        }
                         
                         // Get unique train numbers from other trains
                         var uniqueTrainNumbers = Array.from(new Set(
-                            otherTrains.map(function(t) { return t.AdvertisedTrainIdent; })
-                        )).filter(function(num) { return num !== trainNumber; });
+                            otherTrains.map(function(t) { return t.TechnicalTrainIdent || t.AdvertisedTrainIdent; })
+                        )). filter(function(num) { return num !== trainNumber; });
                         
                         if (uniqueTrainNumbers.length > 0) {
                             // Fetch GPS positions for all other trains
-                            var trainNumberFilters = uniqueTrainNumbers.map(function(num) {
+                            var trainNumberFilters = uniqueTrainNumbers. map(function(num) {
                                 return '<EQ name="Train.AdvertisedTrainNumber" value="' + escapeXml(num) + '" />';
                             }).join('');
                             
                             var positionsQuery = `
-                                <QUERY objecttype="TrainPosition" schemaversion="1.1">
+                                <QUERY objecttype="TrainPosition" schemaversion="1.1" namespace="järnväg.trafikinfo">
                                     <FILTER>
                                         <OR>
                                             ${trainNumberFilters}
@@ -432,8 +421,13 @@ function processTrainDataFromAPI(trainNumber, announcements, orderedRoute, train
                             `;
                             
                             TrafikverketAPI.request(positionsQuery)
-                                .then(function(posData) {
-                                    var positions = posData.RESPONSE?.RESULT?.[0]?.TrainPosition || [];
+                                . then(function(posData) {
+                                    var positions = [];
+                                    if (posData.RESPONSE && posData.RESPONSE.RESULT && 
+                                        posData. RESPONSE.RESULT[0] && posData.RESPONSE.RESULT[0].TrainPosition) {
+                                        positions = posData.RESPONSE.RESULT[0].TrainPosition;
+                                    }
+                                    
                                     var trainPositions = {};
                                     positions.forEach(function(pos) {
                                         if (pos.Train && pos.Train.AdvertisedTrainNumber) {
@@ -444,7 +438,7 @@ function processTrainDataFromAPI(trainNumber, announcements, orderedRoute, train
                                     classifyAndStoreTrains(trainNumber, announcements, otherTrains, trainPositions);
                                     processTrainData(trainNumber, announcements, orderedRoute, trainPosition);
                                 })
-                                .catch(function() {
+                                . catch(function() {
                                     // GPS data is optional, continue without it
                                     classifyAndStoreTrains(trainNumber, announcements, otherTrains, {});
                                     processTrainData(trainNumber, announcements, orderedRoute, trainPosition);
@@ -479,9 +473,9 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
                 signature: location,
                 isAnnounced: true,
                 advertisedTime: announcement.AdvertisedTimeAtLocation,
-                actualTime: announcement.TimeAtLocation || null,
-                track: announcement.TrackAtLocation || '',
-                activityType: announcement.ActivityType,
+                actualTime: announcement. TimeAtLocation || null,
+                track: announcement. TrackAtLocation || '',
+                activityType: announcement. ActivityType,
                 departed: false,
                 arrived: false,
                 isCurrent: false,
@@ -499,12 +493,19 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
             announcementMap[location].departureTime = announcement.TimeAtLocation;
             announcementMap[location].track = announcement.TrackAtLocation || announcementMap[location].track;
         }
+		if (announcements. length > 0) {
+    var technicalNumber = announcements[0].TechnicalTrainIdent;
+    if (technicalNumber && technicalNumber !== trainNumber) {
+        $('#train-label').text('Tåg ' + technicalNumber + ' (' + trainNumber + ')');
+        // Keep original trainNumber for filtering other trains
+    }
+}
     });
     
     const stations = [];
     const addedLocations = new Set();
     
-    const sortedAnnounced = Object.values(announcementMap).sort(function(a, b) {
+    const sortedAnnounced = Object.values(announcementMap). sort(function(a, b) {
         return new Date(a.advertisedTime) - new Date(b.advertisedTime);
     });
     
@@ -516,19 +517,17 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
         // Get previous announced station's time for ViaFromLocation sorting
         var prevAnnouncedTime = index > 0 ? sortedAnnounced[index - 1].advertisedTime : null;
         
-        if (station.viaFromLocations && station.viaFromLocations.length > 0) {
+        if (station.viaFromLocations && station.viaFromLocations. length > 0) {
             const sortedVia = station.viaFromLocations.slice().sort(function(a, b) {
-                return (a.Order || 0) - (b.Order || 0);
+                return (a.Order || 0) - (b. Order || 0);
             });
             
             sortedVia.forEach(function(via, viaIndex) {
                 // Skip if this is an announced station (will be added with proper time later)
-                // Note: via.LocationName is a station signature (e.g., "Em", "Lu") in the Trafikverket API,
-                // which matches the announcementMap key (ann.LocationSignature)
                 if (announcementMap[via.LocationName]) {
                     return;
                 }
-                if (!addedLocations.has(via.LocationName)) {
+                if (! addedLocations.has(via.LocationName)) {
                     addedLocations.add(via.LocationName);
                     stations.push({
                         signature: via.LocationName,
@@ -536,8 +535,6 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
                         departed: false,
                         arrived: false,
                         isCurrent: false,
-                        // ViaFromLocations come after ViaToLocations of previous station
-                        // Use high order number to place them later in the segment
                         _sortTime: prevAnnouncedTime,
                         _sortOrder: VIA_FROM_SORT_ORDER_BASE + viaIndex
                     });
@@ -545,34 +542,30 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
             });
         }
         
-        if (!addedLocations.has(station.signature)) {
+        if (! addedLocations.has(station. signature)) {
             addedLocations.add(station.signature);
             stations.push(station);
         }
         
         if (station.viaToLocations && station.viaToLocations.length > 0) {
             const sortedVia = station.viaToLocations.slice().sort(function(a, b) {
-                return (a.Order || 0) - (b.Order || 0);
+                return (a. Order || 0) - (b.Order || 0);
             });
             
             sortedVia.forEach(function(via, viaIndex) {
                 // Skip if this is an announced station (will be added with proper time later)
-                // Note: via.LocationName is a station signature (e.g., "Em", "Lu") in the Trafikverket API,
-                // which matches the announcementMap key (ann.LocationSignature)
                 if (announcementMap[via.LocationName]) {
                     return;
                 }
-                if (!addedLocations.has(via.LocationName)) {
-                    addedLocations.add(via.LocationName);
+                if (!addedLocations. has(via.LocationName)) {
+                    addedLocations. add(via.LocationName);
                     stations.push({
                         signature: via.LocationName,
                         isAnnounced: false,
                         departed: false,
                         arrived: false,
                         isCurrent: false,
-                        // ViaToLocations come right after parent announced station
-                        // Use low order number to place them early in the segment
-                        _sortTime: station.advertisedTime,
+                        _sortTime: station. advertisedTime,
                         _sortOrder: VIA_TO_SORT_ORDER_BASE + viaIndex
                     });
                 }
@@ -581,17 +574,15 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
     });
     
     // Sort stations by advertised time (earliest → latest)
-    // Via stations use their parent's time for sorting
     stations.sort(function(a, b) {
-        var timeA = a.advertisedTime || a._sortTime;
+        var timeA = a. advertisedTime || a._sortTime;
         var timeB = b.advertisedTime || b._sortTime;
         
         if (timeA && timeB) {
             var dateA = new Date(timeA);
             var dateB = new Date(timeB);
             
-            // If same time, use sort order (announced stations with order 0 come before via stations with order > 0)
-            if (dateA.getTime() === dateB.getTime()) {
+            if (dateA. getTime() === dateB.getTime()) {
                 var orderA = a._sortOrder || 0;
                 var orderB = b._sortOrder || 0;
                 return orderA - orderB;
@@ -600,29 +591,28 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
             return dateA - dateB;
         }
         
-        // Fallback: keep original order
         return 0;
     });
     
     // Clean up temporary sort fields
-    for (var j = 0; j < stations.length; j++) {
+    for (var j = 0; j < stations. length; j++) {
         delete stations[j]._sortTime;
         delete stations[j]._sortOrder;
     }
     
     let currentIndex = -1;
     for (let i = 0; i < stations.length; i++) {
-        if (stations[i].isAnnounced && (stations[i].departed || stations[i].arrived)) {
+        if (stations[i].isAnnounced && (stations[i]. departed || stations[i].arrived)) {
             currentIndex = i;
         }
     }
     
     if (currentIndex >= 0) {
         if (stations[currentIndex].departed && currentIndex < stations.length - 1) {
-            stations[currentIndex].trainBetweenHereAndNext = true;
+            stations[currentIndex]. trainBetweenHereAndNext = true;
             
             for (let i = currentIndex + 1; i < stations.length; i++) {
-                if (!stations[i].isAnnounced) {
+                if (! stations[i].isAnnounced) {
                     stations[i].inTransitZone = true;
                 } else {
                     break;
@@ -651,7 +641,7 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
     const $tbody = $('#table-body');
     $tbody.empty();
     
-    // NEW: Reverse the order so end station is at top
+    // Reverse the order so end station is at top
     var reversedStations = stations.slice().reverse();
     var reversedCurrentIndex = currentIndex >= 0 ? stations.length - 1 - currentIndex : -1;
     
@@ -664,21 +654,21 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         const isCurrent = station.isCurrent;
         const inTransitZone = station.inTransitZone;
         const hasPassed = station.isAnnounced && (originalIndex < currentIndex || station.departed);
-        const isUnannounced = !station.isAnnounced;
+        const isUnannounced = ! station.isAnnounced;
         
-        const $stationCell = $('<td>').addClass('station-cell');
-        $stationCell.text(station.signature);
+        const $stationCell = $('<td>'). addClass('station-cell');
+        $stationCell.text(station. signature);
         
         if (hasPassed) $stationCell.addClass('passed-station');
         if (isUnannounced) $stationCell.addClass('unannounced-station');
         if (inTransitZone) $stationCell.addClass('transit-zone');
         
-        $row.append($stationCell);
+        $row. append($stationCell);
         
         const $trainCell = $('<td>').addClass('same-direction-cell');
         
         if (isCurrent) {
-            const trackInfo = station.track ? station.signature + ' ' + station.track : station.signature;
+            const trackInfo = station.track ?  station.signature + ' ' + station.track : station.signature;
             const $trainSpan = $('<div>')
                 .addClass('train-item current-train')
                 .text(trainNumber + ' ' + trackInfo);
@@ -694,7 +684,7 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         
         if (station.isAnnounced && station.advertisedTime) {
             const time = formatTime(station.advertisedTime);
-            const $timeSpan = $('<div>').addClass('scheduled-time').text(time);
+            const $timeSpan = $('<div>').addClass('scheduled-time'). text(time);
             
             if (station.actualTime) {
                 const delay = formatDelay(station.advertisedTime, station.actualTime);
@@ -702,66 +692,62 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
                 
                 // Color coding
                 if (delay === 'I tid') {
-                    $delaySpan.addClass('on-time').text(' (' + delay + ')');
-                } else if (delay.startsWith('+')) {
-                    $delaySpan.addClass('delayed').text(' (' + delay + ')');
+                    $delaySpan.addClass('on-time'). text(' (' + delay + ')');
+                } else if (delay. startsWith('+')) {
+                    $delaySpan.addClass('delayed'). text(' (' + delay + ')');
                 } else {
                     $delaySpan.addClass('early').text(' (' + delay + ')');
                 }
                 
-                $timeSpan.append($delaySpan);
+                $timeSpan. append($delaySpan);
             }
             $trainCell.append($timeSpan);
         }
         
-        // Show other trains from the same origin (left column)
+        // Show other trains with same destination (left column)
         var trainsData = window.trainData.trainsAtStations || {};
-        var stationTrains = trainsData[station.signature];
+        var stationTrains = trainsData[station. signature];
         
-        if (stationTrains && stationTrains.sameOrigin) {
-            stationTrains.sameOrigin.forEach(function(train) {
-                var delay = formatDelay(train.time, train.actualTime);
-                
-                // Create clickable link for train number
-                var $trainLink = $('<a>')
-                    .attr('href', 'https://search.stationen.info/train.html?train=' + train.trainNumber)
-                    .attr('target', '_blank')
-                    .attr('rel', 'noopener noreferrer')
-                    .text(train.trainNumber);
-                
-                // Get destination signature for the train
-                var destinationSignature = train.destinationSignature || '?';
-                
-                var $trainSpan = $('<div>')
-                    .addClass('train-item same-origin')
-                    .append($trainLink)
-                    .append(' ' + destinationSignature + ' (' + delay + ')');
-                
-                $trainCell.append($trainSpan);
-            });
-        }
-        
-        $row.append($trainCell);
-        
-        // Column 3 - Trains to the same destination (right column)
-        const $meetCell = $('<td>').addClass('meeting-cell');
-        
-        if (stationTrains && stationTrains.sameDestination) {
+        if (stationTrains && stationTrains. sameDestination) {
             stationTrains.sameDestination.forEach(function(train) {
                 var delay = formatDelay(train.time, train.actualTime);
                 
-                // Create clickable link for train number
                 var $trainLink = $('<a>')
-                    .attr('href', 'https://search.stationen.info/train.html?train=' + train.trainNumber)
+                    .attr('href', 'https://search.stationen.info/train. html?train=' + train.trainNumber)
                     .attr('target', '_blank')
                     .attr('rel', 'noopener noreferrer')
                     .text(train.trainNumber);
                 
-                // Get destination signature for the train
                 var destinationSignature = train.destinationSignature || '?';
                 
                 var $trainSpan = $('<div>')
                     .addClass('train-item same-destination')
+                    .append($trainLink)
+                    .append(' ' + destinationSignature + ' (' + delay + ')');
+                
+                $trainCell. append($trainSpan);
+            });
+        }
+        
+        $row. append($trainCell);
+        
+        // Column 3 - Trains to different destination (right column)
+        const $meetCell = $('<td>').addClass('meeting-cell');
+        
+        if (stationTrains && stationTrains.otherDestination) {
+            stationTrains.otherDestination.forEach(function(train) {
+                var delay = formatDelay(train. time, train.actualTime);
+                
+                var $trainLink = $('<a>')
+                    . attr('href', 'https://search.stationen.info/train.html?train=' + train. trainNumber)
+                    .attr('target', '_blank')
+                    .attr('rel', 'noopener noreferrer')
+                    .text(train.trainNumber);
+                
+                var destinationSignature = train.destinationSignature || '?';
+                
+                var $trainSpan = $('<div>')
+                    . addClass('train-item other-destination')
                     .append($trainLink)
                     .append(' ' + destinationSignature + ' (' + delay + ')');
                 
@@ -771,13 +757,33 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         
         $row.append($meetCell);
         
+        // Check if train is between this station and next (add spacer row)
+        if (station.trainBetweenHereAndNext) {
+            $tbody.append($row); // Append current station row first
+            
+            // Create empty spacer row with train indicator
+            const $spacerRow = $('<tr>'). addClass('spacer-row');
+            const $spacerCell1 = $('<td>').addClass('spacer-cell'). html('&nbsp;');
+            const $spacerCell2 = $('<td>').addClass('spacer-cell');
+            const $trainHereSpan = $('<div>')
+                .addClass('train-item train-in-transit')
+                .text('🚂 ' + trainNumber + ' →');
+            $spacerCell2.append($trainHereSpan);
+            const $spacerCell3 = $('<td>'). addClass('spacer-cell').html('&nbsp;');
+            
+            $spacerRow.append($spacerCell1, $spacerCell2, $spacerCell3);
+            $tbody.append($spacerRow);
+            
+            return; // Skip normal append at the end since we already added the row
+        }
+        
         $tbody.append($row);
     });
     
-    // Auto-scroll to current train position (using reversed index)
+    // Auto-scroll to current train position
     if (reversedCurrentIndex >= 0) {
         setTimeout(function() {
-            var $currentRow = $('#table-body tr').eq(reversedCurrentIndex);
+            var $currentRow = $('#table-body tr'). eq(reversedCurrentIndex);
             if ($currentRow.length > 0) {
                 $currentRow[0].scrollIntoView({
                     behavior: 'smooth',

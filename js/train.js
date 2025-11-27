@@ -49,12 +49,17 @@ function hasSameDirection(dir1, dir2) {
     return dir1.fromLocation === dir2.fromLocation;
 }
 
-// Check if two trains are going in opposite directions
+// Check if two trains are going in opposite directions (meeting trains)
+// Returns true for trains that are NOT going in the same direction
 function hasOppositeDirection(dir1, dir2) {
     if (!dir1 || !dir2) return false;
     
-    // Opposite direction: one train's origin is another's destination
-    // or their toLocations are different while sharing route stations
+    // If same direction (same origin), it's not opposite
+    if (dir1.fromLocation && dir2.fromLocation && dir1.fromLocation === dir2.fromLocation) {
+        return false;
+    }
+    
+    // Strictly opposite: one train's origin is another's destination
     if (dir1.fromLocation && dir2.toLocation && dir1.fromLocation === dir2.toLocation) {
         return true;
     }
@@ -62,7 +67,8 @@ function hasOppositeDirection(dir1, dir2) {
         return true;
     }
     
-    // Also consider trains with different destinations as potentially opposite
+    // For trains with different origins and destinations, show them as meeting trains
+    // This handles cases where trains share stations but are going in different directions
     if (dir1.toLocation && dir2.toLocation && dir1.toLocation !== dir2.toLocation) {
         return true;
     }

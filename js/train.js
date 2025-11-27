@@ -9,37 +9,65 @@ function escapeXml(str) {
         .replace(/'/g, '&apos;');
 }
 
-// Determine train direction based on ToLocation from API
+// Determine train direction based on ToLocation and FromLocation from API
 function determineTrainDirection(trainAnnouncements) {
     if (!trainAnnouncements || trainAnnouncements.length === 0) return null;
     
     // Find first announcement with ToLocation (destination)
     var toLocation = null;
+    var fromLocation = null;
     for (var i = 0; i < trainAnnouncements.length; i++) {
-        if (trainAnnouncements[i].ToLocation && trainAnnouncements[i]. ToLocation[0]) {
-            toLocation = trainAnnouncements[i]. ToLocation[0]. LocationName;
-            break;
+        if (trainAnnouncements[i].ToLocation && trainAnnouncements[i].ToLocation[0] && !toLocation) {
+            toLocation = trainAnnouncements[i].ToLocation[0].LocationName;
         }
+        if (trainAnnouncements[i].FromLocation && trainAnnouncements[i].FromLocation[0] && !fromLocation) {
+            fromLocation = trainAnnouncements[i].FromLocation[0].LocationName;
+        }
+        if (toLocation && fromLocation) break;
     }
     
     // Get first and last station signatures for destination display
     var sorted = trainAnnouncements.slice().sort(function(a, b) {
-        return new Date(a.AdvertisedTimeAtLocation) - new Date(b. AdvertisedTimeAtLocation);
+        return new Date(a.AdvertisedTimeAtLocation) - new Date(b.AdvertisedTimeAtLocation);
     });
     var last = sorted[sorted.length - 1];
+    var first = sorted[0];
     
     return {
         toLocation: toLocation,
-        to: last.LocationSignature  // Keep for destination display
+        fromLocation: fromLocation,
+        to: last.LocationSignature,  // Keep for destination display
+        from: first.LocationSignature  // First station signature
     };
 }
 
-// Check if two trains have the same destination
-function hasSameDestination(dir1, dir2) {
+// Check if two trains are going in the same direction (same origin/fromLocation)
+function hasSameDirection(dir1, dir2) {
     if (!dir1 || !dir2) return false;
-    if (! dir1.toLocation || !dir2.toLocation) return false;
+    if (!dir1.fromLocation || !dir2.fromLocation) return false;
     
-    return dir1.toLocation === dir2.toLocation;
+    return dir1.fromLocation === dir2.fromLocation;
+}
+
+// Check if two trains are going in opposite directions
+function hasOppositeDirection(dir1, dir2) {
+    if (!dir1 || !dir2) return false;
+    
+    // Opposite direction: one train's origin is another's destination
+    // or their toLocations are different while sharing route stations
+    if (dir1.fromLocation && dir2.toLocation && dir1.fromLocation === dir2.toLocation) {
+        return true;
+    }
+    if (dir1.toLocation && dir2.fromLocation && dir1.toLocation === dir2.fromLocation) {
+        return true;
+    }
+    
+    // Also consider trains with different destinations as potentially opposite
+    if (dir1.toLocation && dir2.toLocation && dir1.toLocation !== dir2.toLocation) {
+        return true;
+    }
+    
+    return false;
 }
 
 // Format delay information
@@ -122,12 +150,12 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
     
     Object.keys(trainCurrentPositions).forEach(function(trainNum) {
         var position = trainCurrentPositions[trainNum];
-        var stationSig = position. station;
+        var stationSig = position.station;
         
-        if (! trainsAtStations[stationSig]) {
+        if (!trainsAtStations[stationSig]) {
             trainsAtStations[stationSig] = {
-                sameDestination: [],    // Vänster: samma destination
-                otherDestination: []    // Höger: annan destination
+                sameDirection: [],      // Left column: same direction (same origin)
+                oppositeDirection: []   // Right column: opposite direction (meeting trains)
             };
         }
         
@@ -144,27 +172,27 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
             destinationSignature: destinationSignature
         };
         
-        // Classify: same destination vs other destination
-        if (trainDirection && hasSameDestination(currentDirection, trainDirection)) {
-            // Left column: Trains to the SAME destination
-            trainsAtStations[stationSig].sameDestination.push(trainInfo);
-        } else if (trainDirection) {
-            // Right column: Trains to DIFFERENT destination
-            trainsAtStations[stationSig].otherDestination.push(trainInfo);
+        // Classify: same direction (same origin) vs opposite direction (meeting trains)
+        if (trainDirection && hasSameDirection(currentDirection, trainDirection)) {
+            // Left column: Trains going in the SAME direction (same origin)
+            trainsAtStations[stationSig].sameDirection.push(trainInfo);
+        } else if (trainDirection && hasOppositeDirection(currentDirection, trainDirection)) {
+            // Right column: Trains going in OPPOSITE direction (meeting trains)
+            trainsAtStations[stationSig].oppositeDirection.push(trainInfo);
         }
     });
     
     // Sort trains by time
     Object.keys(trainsAtStations).forEach(function(sig) {
-        trainsAtStations[sig].sameDestination.sort(function(a, b) {
+        trainsAtStations[sig].sameDirection.sort(function(a, b) {
             return new Date(a.time) - new Date(b.time);
         });
-        trainsAtStations[sig].otherDestination.sort(function(a, b) {
-            return new Date(a. time) - new Date(b. time);
+        trainsAtStations[sig].oppositeDirection.sort(function(a, b) {
+            return new Date(a.time) - new Date(b.time);
         });
     });
     
-    // Store in window. trainData
+    // Store in window.trainData
     window.trainData.trainsAtStations = trainsAtStations;
 }
 
@@ -704,52 +732,55 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
             $trainCell.append($timeSpan);
         }
         
-        // Show other trains with same destination (left column)
+        // Show trains going in same direction (left column) - without time
         var trainsData = window.trainData.trainsAtStations || {};
-        var stationTrains = trainsData[station. signature];
+        var stationTrains = trainsData[station.signature];
         
-        if (stationTrains && stationTrains. sameDestination) {
-            stationTrains.sameDestination.forEach(function(train) {
+        if (stationTrains && stationTrains.sameDirection) {
+            stationTrains.sameDirection.forEach(function(train) {
                 var delay = formatDelay(train.time, train.actualTime);
                 
                 var $trainLink = $('<a>')
-                    .attr('href', 'https://search.stationen.info/train. html?train=' + train.trainNumber)
+                    .attr('href', 'train.html?train=' + train.trainNumber)
                     .attr('target', '_blank')
                     .attr('rel', 'noopener noreferrer')
                     .text(train.trainNumber);
                 
                 var destinationSignature = train.destinationSignature || '?';
                 
+                // Left column: train number + destination + delay (NO time)
                 var $trainSpan = $('<div>')
-                    .addClass('train-item same-destination')
+                    .addClass('train-item same-direction')
                     .append($trainLink)
                     .append(' ' + destinationSignature + ' (' + delay + ')');
                 
-                $trainCell. append($trainSpan);
+                $trainCell.append($trainSpan);
             });
         }
         
-        $row. append($trainCell);
+        $row.append($trainCell);
         
-        // Column 3 - Trains to different destination (right column)
+        // Column 3 - Trains going in opposite direction (right column) - with time
         const $meetCell = $('<td>').addClass('meeting-cell');
         
-        if (stationTrains && stationTrains.otherDestination) {
-            stationTrains.otherDestination.forEach(function(train) {
-                var delay = formatDelay(train. time, train.actualTime);
+        if (stationTrains && stationTrains.oppositeDirection) {
+            stationTrains.oppositeDirection.forEach(function(train) {
+                var delay = formatDelay(train.time, train.actualTime);
+                var time = formatTime(train.time);
                 
                 var $trainLink = $('<a>')
-                    . attr('href', 'https://search.stationen.info/train.html?train=' + train. trainNumber)
+                    .attr('href', 'train.html?train=' + train.trainNumber)
                     .attr('target', '_blank')
                     .attr('rel', 'noopener noreferrer')
                     .text(train.trainNumber);
                 
                 var destinationSignature = train.destinationSignature || '?';
                 
+                // Right column: train number + destination + time + delay
                 var $trainSpan = $('<div>')
-                    . addClass('train-item other-destination')
+                    .addClass('train-item opposite-direction')
                     .append($trainLink)
-                    .append(' ' + destinationSignature + ' (' + delay + ')');
+                    .append(' ' + destinationSignature + ' ' + time + ' (' + delay + ')');
                 
                 $meetCell.append($trainSpan);
             });

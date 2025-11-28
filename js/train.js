@@ -256,6 +256,8 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
     // Build complete route for current train including Via stations
     var currentCompleteRoute = buildCompleteRoute(currentAnnouncements);
     var currentRouteSignatures = currentCompleteRoute.map(function(loc) { return loc.signature; });
+    // Use Set for O(1) lookup when filtering trains by route membership
+    var currentRouteSet = new Set(currentRouteSignatures);
     
     // Calculate time window: only trains passed within the last 10 minutes
     var now = new Date();
@@ -335,6 +337,12 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
         var position = trainCurrentPositions[trainNum];
         var stationSig = position.station;  // This is now the operational station (may include Via)
         
+        // Filter: Only show trains whose latest driftplats is on the current train's route
+        // This ensures we only display trains operating on our route segment
+        if (!currentRouteSet.has(stationSig)) {
+            return; // Skip trains not on current train's route
+        }
+        
         if (!trainsAtStations[stationSig]) {
             trainsAtStations[stationSig] = {
                 sameDirection: [],      // Left column: same direction (same origin)
@@ -369,14 +377,19 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
         }
         
         // Classify using station-based direction comparison
-        if (hasSameDirectionByStationOrder(currentStationOrder, otherStationOrder)) {
+        var directionResult = compareDirectionByStationOrder(currentStationOrder, otherStationOrder);
+        
+        if (directionResult === 'same') {
             // Left column: Trains going in the SAME direction (based on station order)
             trainsAtStations[stationSig].sameDirection.push(trainInfo);
-        } else if (hasOppositeDirectionByStationOrder(currentStationOrder, otherStationOrder)) {
+        } else if (directionResult === 'opposite') {
             // Right column: Trains going in OPPOSITE direction (based on station order)
             trainsAtStations[stationSig].oppositeDirection.push(trainInfo);
+        } else {
+            // Direction unknown (not enough shared stations) - show in same direction column by default
+            // This ensures all trains on our route are visible, even if heading to different destinations
+            trainsAtStations[stationSig].sameDirection.push(trainInfo);
         }
-        // If neither, the train is not shown (not enough shared stations to determine direction)
     });
     
     // Sort trains by time
@@ -917,19 +930,15 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         }
     }
     
-    // Collect all unique driftplats where trains currently are
+    // Collect all driftplats from current train's route (start to end station)
     var trainsData = window.trainData.trainsAtStations || {};
     var allDriftplats = new Set();
     
-    // Add all stations from trainsAtStations (where other trains are)
-    Object.keys(trainsData).forEach(function(sig) {
-        allDriftplats.add(sig);
+    // Add ALL stations from current train's route (start to end)
+    // This ensures we display every driftplats on the route, not just where trains are
+    stations.forEach(function(station) {
+        allDriftplats.add(station.signature);
     });
-    
-    // Add current train's driftplats
-    if (currentTrainDriftplats) {
-        allDriftplats.add(currentTrainDriftplats);
-    }
     
     // Build station maps for sorting and lookup (O(1) lookups instead of O(n) searches)
     var stationOrderMap = {};

@@ -399,6 +399,9 @@ function loadTrainData(trainNumber) {
 }
 
 function processTrainDataFromAPI(trainNumber, announcements, orderedRoute, trainPosition, allLocationSignatures) {
+    // Store announcements in window.trainData for use in renderTrainTable
+    window.trainData.announcements = announcements;
+    
     // Get station names (optional, for display)
     var locationArray = Array.from(allLocationSignatures);
     var date = new Date().toISOString().split('T')[0];

@@ -136,7 +136,7 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
     var now = new Date();
     var recentTimeLimit = new Date(now.getTime() - 10 * 60000); // 10 min ago
     
-    // Group all trains by train number
+    // Group all trains by train number (AdvertisedTrainIdent)
     var trainsByNumber = {};
     allOtherTrains.forEach(function(ann) {
         var num = ann.AdvertisedTrainIdent;
@@ -154,10 +154,16 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
         
         var announcements = trainsByNumber[trainNum];
         
+        // Guard: skip if no announcements (defensive)
+        if (!announcements || announcements.length === 0) return;
+        
         // Sort by time
         var sorted = announcements.slice().sort(function(a, b) {
             return new Date(a.AdvertisedTimeAtLocation) - new Date(b.AdvertisedTimeAtLocation);
         });
+        
+        // Get TechnicalTrainIdent from first announcement
+        var technicalTrainIdent = announcements[0].TechnicalTrainIdent || trainNum;
         
         // Find LATEST station with TimeAtLocation (actually passed)
         var currentPosition = null;
@@ -167,7 +173,8 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
                     station: sorted[i].LocationSignature,
                     time: sorted[i].AdvertisedTimeAtLocation,
                     actualTime: sorted[i].TimeAtLocation,
-                    track: sorted[i].TrackAtLocation
+                    track: sorted[i].TrackAtLocation,
+                    technicalTrainIdent: technicalTrainIdent
                 };
                 break;
             }
@@ -205,7 +212,8 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
         var destinationSignature = trainDirection ? trainDirection.to : '?';
         
         var trainInfo = {
-            trainNumber: trainNum,
+            trainNumber: trainNum,  // AdvertisedTrainIdent - for search links
+            technicalTrainIdent: position.technicalTrainIdent || trainNum,  // For display
             time: position.time,
             actualTime: position.actualTime,
             track: position.track,
@@ -291,6 +299,7 @@ function loadTrainData(trainNumber) {
             <INCLUDE>ActivityType</INCLUDE>
             <INCLUDE>AdvertisedTimeAtLocation</INCLUDE>
             <INCLUDE>AdvertisedTrainIdent</INCLUDE>
+            <INCLUDE>TechnicalTrainIdent</INCLUDE>
             <INCLUDE>LocationSignature</INCLUDE>
             <INCLUDE>ToLocation</INCLUDE>
             <INCLUDE>FromLocation</INCLUDE>
@@ -315,6 +324,13 @@ function loadTrainData(trainNumber) {
                 showError('Tåg ' + trainNumber + ' hittades inte för idag');
                 return;
             }
+            
+            // Extract TechnicalTrainIdent from first announcement for display
+            var technicalTrainIdent = announcements[0].TechnicalTrainIdent || trainNumber;
+            window.trainData.technicalTrainIdent = technicalTrainIdent;
+            
+            // Update train label to show TechnicalTrainIdent
+            $('#train-label').text('Tåg ' + technicalTrainIdent);
             
             // Step 2: Collect all locations including ViaFromLocation and ViaToLocation
             const allLocationSignatures = new Set();
@@ -438,6 +454,7 @@ function processTrainDataFromAPI(trainNumber, announcements, orderedRoute, train
                 <INCLUDE>ActivityType</INCLUDE>
                 <INCLUDE>AdvertisedTimeAtLocation</INCLUDE>
                 <INCLUDE>AdvertisedTrainIdent</INCLUDE>
+                <INCLUDE>TechnicalTrainIdent</INCLUDE>
                 <INCLUDE>LocationSignature</INCLUDE>
                 <INCLUDE>ToLocation</INCLUDE>
                 <INCLUDE>FromLocation</INCLUDE>
@@ -711,6 +728,9 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
     const $tbody = $('#table-body');
     $tbody.empty();
     
+    // Use TechnicalTrainIdent for display (stored when loading data)
+    var displayTrainNumber = window.trainData.technicalTrainIdent || trainNumber;
+    
     // Get final station signature (last station in the original array)
     var finalStation = stations.length > 0 ? stations[stations.length - 1].signature : '?';
     
@@ -741,18 +761,18 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         const $trainCell = $('<td>').addClass('same-direction-cell');
         
         if (isCurrent) {
-            // Display: trainNumber finalStation (Diff)
+            // Display: TechnicalTrainIdent finalStation (Diff)
             var delay = formatDelay(station.advertisedTime, station.actualTime);
             const $trainSpan = $('<div>')
                 .addClass('train-item current-train')
-                .text(trainNumber + ' ' + finalStation + ' (' + delay + ')');
+                .text(displayTrainNumber + ' ' + finalStation + ' (' + delay + ')');
             $trainCell.append($trainSpan);
         }
         
         if (inTransitZone) {
             const $trainSpan = $('<div>')
                 .addClass('train-item transit-train')
-                .text('← ' + trainNumber + ' på väg');
+                .text('← ' + displayTrainNumber + ' på väg');
             $trainCell.append($trainSpan);
         }
         
@@ -786,15 +806,18 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
             stationTrains.sameDirection.forEach(function(train) {
                 var delay = formatDelay(train.time, train.actualTime);
                 
+                // Display TechnicalTrainIdent, but link uses AdvertisedTrainIdent for search
+                var displayNumber = train.technicalTrainIdent || train.trainNumber;
+                
                 var $trainLink = $('<a>')
                     .attr('href', 'train.html?train=' + train.trainNumber)
                     .attr('target', '_blank')
                     .attr('rel', 'noopener noreferrer')
-                    .text(train.trainNumber);
+                    .text(displayNumber);
                 
                 var destinationSignature = train.destinationSignature || '?';
                 
-                // Left column: train number + destination + delay (NO time)
+                // Left column: TechnicalTrainIdent + destination + delay (NO time)
                 var $trainSpan = $('<div>')
                     .addClass('train-item same-direction')
                     .append($trainLink)
@@ -813,15 +836,18 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
             stationTrains.oppositeDirection.forEach(function(train) {
                 var delay = formatDelay(train.time, train.actualTime);
                 
+                // Display TechnicalTrainIdent, but link uses AdvertisedTrainIdent for search
+                var displayNumber = train.technicalTrainIdent || train.trainNumber;
+                
                 var $trainLink = $('<a>')
                     .attr('href', 'train.html?train=' + train.trainNumber)
                     .attr('target', '_blank')
                     .attr('rel', 'noopener noreferrer')
-                    .text(train.trainNumber);
+                    .text(displayNumber);
                 
                 var destinationSignature = train.destinationSignature || '?';
                 
-                // Right column: train number + destination + delay (NO time)
+                // Right column: TechnicalTrainIdent + destination + delay (NO time)
                 var $trainSpan = $('<div>')
                     .addClass('train-item opposite-direction')
                     .append($trainLink)
@@ -843,7 +869,7 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
             const $spacerCell2 = $('<td>').addClass('spacer-cell');
             const $trainHereSpan = $('<div>')
                 .addClass('train-item train-in-transit')
-                .text('🚂 ' + trainNumber + ' →');
+                .text('🚂 ' + displayTrainNumber + ' →');
             $spacerCell2.append($trainHereSpan);
             const $spacerCell3 = $('<td>').addClass('spacer-cell').html('&nbsp;');
             

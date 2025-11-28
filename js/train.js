@@ -324,7 +324,7 @@ function loadTrainData(trainNumber) {
                 // Add ViaFromLocation (locations before this announced station)
                 if (ann.ViaFromLocation && ann.ViaFromLocation.length > 0) {
                     ann.ViaFromLocation.forEach(function(via) {
-                if (!allLocationSignatures.has(via.LocationName)) {
+                        if (!allLocationSignatures.has(via.LocationName)) {
                             allLocationSignatures.add(via.LocationName);
                             orderedLocations.push({
                                 signature: via.LocationName,

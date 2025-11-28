@@ -76,6 +76,7 @@ app.get('/api/train/:trainNumber', async (req, res) => {
             <INCLUDE>ActivityType</INCLUDE>
             <INCLUDE>AdvertisedTimeAtLocation</INCLUDE>
             <INCLUDE>AdvertisedTrainIdent</INCLUDE>
+            <INCLUDE>TechnicalTrainIdent</INCLUDE>
             <INCLUDE>LocationSignature</INCLUDE>
             <INCLUDE>ToLocation</INCLUDE>
             <INCLUDE>FromLocation</INCLUDE>
@@ -121,6 +122,7 @@ app.get('/api/train/:trainNumber/full-route', async (req, res) => {
                 <INCLUDE>ActivityType</INCLUDE>
                 <INCLUDE>AdvertisedTimeAtLocation</INCLUDE>
                 <INCLUDE>AdvertisedTrainIdent</INCLUDE>
+                <INCLUDE>TechnicalTrainIdent</INCLUDE>
                 <INCLUDE>LocationSignature</INCLUDE>
                 <INCLUDE>ToLocation</INCLUDE>
                 <INCLUDE>FromLocation</INCLUDE>
@@ -278,6 +280,7 @@ app.get('/api/trains-at-locations', async (req, res) => {
             <INCLUDE>ActivityType</INCLUDE>
             <INCLUDE>AdvertisedTimeAtLocation</INCLUDE>
             <INCLUDE>AdvertisedTrainIdent</INCLUDE>
+            <INCLUDE>TechnicalTrainIdent</INCLUDE>
             <INCLUDE>LocationSignature</INCLUDE>
             <INCLUDE>ToLocation</INCLUDE>
             <INCLUDE>FromLocation</INCLUDE>

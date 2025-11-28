@@ -129,6 +129,24 @@ function formatDelay(advertisedTime, actualTime) {
 }
 
 // Classify all trains per station
+// Helper function to process Via stations and add them to the route
+function processViaStations(viaStations, addedLocations, allLocations) {
+    if (!viaStations || viaStations.length === 0) return;
+    
+    var sortedVia = viaStations.slice().sort(function(a, b) {
+        return (a.Order || 0) - (b.Order || 0);
+    });
+    sortedVia.forEach(function(via) {
+        if (!addedLocations.has(via.LocationName)) {
+            addedLocations.add(via.LocationName);
+            allLocations.push({
+                signature: via.LocationName,
+                isAnnounced: false
+            });
+        }
+    });
+}
+
 // Build complete route including Via stations for a train's announcements
 function buildCompleteRoute(announcements) {
     var allLocations = [];
@@ -141,20 +159,7 @@ function buildCompleteRoute(announcements) {
     
     sorted.forEach(function(ann) {
         // Add ViaFromLocation (locations before this announced station)
-        if (ann.ViaFromLocation && ann.ViaFromLocation.length > 0) {
-            var sortedViaFrom = ann.ViaFromLocation.slice().sort(function(a, b) {
-                return (a.Order || 0) - (b.Order || 0);
-            });
-            sortedViaFrom.forEach(function(via) {
-                if (!addedLocations.has(via.LocationName)) {
-                    addedLocations.add(via.LocationName);
-                    allLocations.push({
-                        signature: via.LocationName,
-                        isAnnounced: false
-                    });
-                }
-            });
-        }
+        processViaStations(ann.ViaFromLocation, addedLocations, allLocations);
         
         // Add the announced location
         if (!addedLocations.has(ann.LocationSignature)) {
@@ -169,20 +174,7 @@ function buildCompleteRoute(announcements) {
         }
         
         // Add ViaToLocation (locations after this announced station)
-        if (ann.ViaToLocation && ann.ViaToLocation.length > 0) {
-            var sortedViaTo = ann.ViaToLocation.slice().sort(function(a, b) {
-                return (a.Order || 0) - (b.Order || 0);
-            });
-            sortedViaTo.forEach(function(via) {
-                if (!addedLocations.has(via.LocationName)) {
-                    addedLocations.add(via.LocationName);
-                    allLocations.push({
-                        signature: via.LocationName,
-                        isAnnounced: false
-                    });
-                }
-            });
-        }
+        processViaStations(ann.ViaToLocation, addedLocations, allLocations);
     });
     
     return allLocations;
@@ -311,7 +303,7 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
         for (var i = sorted.length - 1; i >= 0; i--) {
             if (sorted[i].TimeAtLocation) {
                 currentPosition = {
-                    station: latestOperational.station,  // Use the operational station (may be Via)
+                    station: latestOperational.station,  // Use the determined operational station (includes Via stations)
                     announcedStation: sorted[i].LocationSignature,  // The actual announced station
                     isViaStation: latestOperational.isViaStation,
                     time: sorted[i].AdvertisedTimeAtLocation,
@@ -369,7 +361,12 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
         
         // Get station orders for comparison - use complete route including Via stations
         var currentStationOrder = currentRouteSignatures;
-        var otherStationOrder = position.completeRoute ? position.completeRoute.map(function(loc) { return loc.signature; }) : (trainDirection ? trainDirection.stationOrder : []);
+        var otherStationOrder = [];
+        if (position.completeRoute) {
+            otherStationOrder = position.completeRoute.map(function(loc) { return loc.signature; });
+        } else if (trainDirection && trainDirection.stationOrder) {
+            otherStationOrder = trainDirection.stationOrder;
+        }
         
         // Classify using station-based direction comparison
         if (hasSameDirectionByStationOrder(currentStationOrder, otherStationOrder)) {

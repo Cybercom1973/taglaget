@@ -439,3 +439,9 @@ td.spacer-cell * {
 .spacer-row, .spacer-row * {
     background: transparent !important;
 }
+
+/* Train at Via (unannounced) station - italic to indicate estimated position */
+.via-station-train {
+    font-style: italic;
+    opacity: 0.85;
+}

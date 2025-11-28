@@ -129,8 +129,141 @@ function formatDelay(advertisedTime, actualTime) {
 }
 
 // Classify all trains per station
+// Build complete route including Via stations for a train's announcements
+function buildCompleteRoute(announcements) {
+    var allLocations = [];
+    var addedLocations = new Set();
+    
+    // Sort by advertised time
+    var sorted = announcements.slice().sort(function(a, b) {
+        return new Date(a.AdvertisedTimeAtLocation) - new Date(b.AdvertisedTimeAtLocation);
+    });
+    
+    sorted.forEach(function(ann) {
+        // Add ViaFromLocation (locations before this announced station)
+        if (ann.ViaFromLocation && ann.ViaFromLocation.length > 0) {
+            var sortedViaFrom = ann.ViaFromLocation.slice().sort(function(a, b) {
+                return (a.Order || 0) - (b.Order || 0);
+            });
+            sortedViaFrom.forEach(function(via) {
+                if (!addedLocations.has(via.LocationName)) {
+                    addedLocations.add(via.LocationName);
+                    allLocations.push({
+                        signature: via.LocationName,
+                        isAnnounced: false
+                    });
+                }
+            });
+        }
+        
+        // Add the announced location
+        if (!addedLocations.has(ann.LocationSignature)) {
+            addedLocations.add(ann.LocationSignature);
+            allLocations.push({
+                signature: ann.LocationSignature,
+                isAnnounced: true,
+                advertisedTime: ann.AdvertisedTimeAtLocation,
+                actualTime: ann.TimeAtLocation,
+                track: ann.TrackAtLocation
+            });
+        }
+        
+        // Add ViaToLocation (locations after this announced station)
+        if (ann.ViaToLocation && ann.ViaToLocation.length > 0) {
+            var sortedViaTo = ann.ViaToLocation.slice().sort(function(a, b) {
+                return (a.Order || 0) - (b.Order || 0);
+            });
+            sortedViaTo.forEach(function(via) {
+                if (!addedLocations.has(via.LocationName)) {
+                    addedLocations.add(via.LocationName);
+                    allLocations.push({
+                        signature: via.LocationName,
+                        isAnnounced: false
+                    });
+                }
+            });
+        }
+    });
+    
+    return allLocations;
+}
+
+// Find the latest operational station (driftplats) for a train including Via stations
+function findLatestOperationalStation(announcements, completeRoute) {
+    // Sort announcements by advertised time
+    var sorted = announcements.slice().sort(function(a, b) {
+        return new Date(a.AdvertisedTimeAtLocation) - new Date(b.AdvertisedTimeAtLocation);
+    });
+    
+    // Find the latest station with TimeAtLocation (actually passed)
+    var latestPassedIndex = -1;
+    var latestPassedAnnouncement = null;
+    
+    for (var i = sorted.length - 1; i >= 0; i--) {
+        if (sorted[i].TimeAtLocation) {
+            latestPassedAnnouncement = sorted[i];
+            break;
+        }
+    }
+    
+    if (!latestPassedAnnouncement) {
+        return null; // Train hasn't passed any station yet
+    }
+    
+    // Find the index of this station in the complete route
+    var passedStationIndex = -1;
+    for (var j = 0; j < completeRoute.length; j++) {
+        if (completeRoute[j].signature === latestPassedAnnouncement.LocationSignature) {
+            passedStationIndex = j;
+            break;
+        }
+    }
+    
+    // The latest operational station is either:
+    // 1. The announced station if the train is still there (arrived but not departed)
+    // 2. The next Via station if the train has departed to an unannounced station
+    
+    // Check if train has departed from the last passed announced station
+    var hasDeparted = false;
+    for (var k = 0; k < sorted.length; k++) {
+        if (sorted[k].LocationSignature === latestPassedAnnouncement.LocationSignature &&
+            sorted[k].ActivityType === 'Avgang' && sorted[k].TimeAtLocation) {
+            hasDeparted = true;
+            break;
+        }
+    }
+    
+    // If departed and there's a Via station next, the train is at that Via station
+    if (hasDeparted && passedStationIndex >= 0 && passedStationIndex < completeRoute.length - 1) {
+        var nextStation = completeRoute[passedStationIndex + 1];
+        if (!nextStation.isAnnounced) {
+            // Train is likely at this unannounced (Via) station
+            return {
+                station: nextStation.signature,
+                isViaStation: true,
+                previousAnnouncedStation: latestPassedAnnouncement.LocationSignature,
+                time: latestPassedAnnouncement.AdvertisedTimeAtLocation,
+                actualTime: latestPassedAnnouncement.TimeAtLocation
+            };
+        }
+    }
+    
+    // Otherwise, return the announced station
+    return {
+        station: latestPassedAnnouncement.LocationSignature,
+        isViaStation: false,
+        time: latestPassedAnnouncement.AdvertisedTimeAtLocation,
+        actualTime: latestPassedAnnouncement.TimeAtLocation,
+        track: latestPassedAnnouncement.TrackAtLocation
+    };
+}
+
 function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOtherTrains, trainGPSPositions) {
     var currentDirection = determineTrainDirection(currentAnnouncements);
+    
+    // Build complete route for current train including Via stations
+    var currentCompleteRoute = buildCompleteRoute(currentAnnouncements);
+    var currentRouteSignatures = currentCompleteRoute.map(function(loc) { return loc.signature; });
     
     // Calculate time window: only trains passed within the last 10 minutes
     var now = new Date();
@@ -165,16 +298,27 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
         // Get TechnicalTrainIdent from first announcement
         var technicalTrainIdent = announcements[0].TechnicalTrainIdent || trainNum;
         
-        // Find LATEST station with TimeAtLocation (actually passed)
+        // Build complete route for this train including Via stations
+        var completeRoute = buildCompleteRoute(announcements);
+        
+        // Find the latest operational station (including Via stations)
+        var latestOperational = findLatestOperationalStation(announcements, completeRoute);
+        
+        if (!latestOperational) return; // Train hasn't passed any station yet
+        
+        // Find LATEST station with TimeAtLocation (actually passed) for timing info
         var currentPosition = null;
         for (var i = sorted.length - 1; i >= 0; i--) {
             if (sorted[i].TimeAtLocation) {
                 currentPosition = {
-                    station: sorted[i].LocationSignature,
+                    station: latestOperational.station,  // Use the operational station (may be Via)
+                    announcedStation: sorted[i].LocationSignature,  // The actual announced station
+                    isViaStation: latestOperational.isViaStation,
                     time: sorted[i].AdvertisedTimeAtLocation,
                     actualTime: sorted[i].TimeAtLocation,
                     track: sorted[i].TrackAtLocation,
-                    technicalTrainIdent: technicalTrainIdent
+                    technicalTrainIdent: technicalTrainIdent,
+                    completeRoute: completeRoute  // Store complete route for display
                 };
                 break;
             }
@@ -197,7 +341,7 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
     
     Object.keys(trainCurrentPositions).forEach(function(trainNum) {
         var position = trainCurrentPositions[trainNum];
-        var stationSig = position.station;
+        var stationSig = position.station;  // This is now the operational station (may include Via)
         
         if (!trainsAtStations[stationSig]) {
             trainsAtStations[stationSig] = {
@@ -217,12 +361,15 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
             time: position.time,
             actualTime: position.actualTime,
             track: position.track,
-            destinationSignature: destinationSignature
+            destinationSignature: destinationSignature,
+            latestDriftplats: position.station,  // The latest operational station (driftplats)
+            isViaStation: position.isViaStation,  // Whether the train is at a Via (unannounced) station
+            completeRoute: position.completeRoute  // Complete route including Via stations
         };
         
-        // Get station orders for comparison
-        var currentStationOrder = currentDirection ? currentDirection.stationOrder : [];
-        var otherStationOrder = trainDirection ? trainDirection.stationOrder : [];
+        // Get station orders for comparison - use complete route including Via stations
+        var currentStationOrder = currentRouteSignatures;
+        var otherStationOrder = position.completeRoute ? position.completeRoute.map(function(loc) { return loc.signature; }) : (trainDirection ? trainDirection.stationOrder : []);
         
         // Classify using station-based direction comparison
         if (hasSameDirectionByStationOrder(currentStationOrder, otherStationOrder)) {
@@ -458,6 +605,8 @@ function processTrainDataFromAPI(trainNumber, announcements, orderedRoute, train
                 <INCLUDE>LocationSignature</INCLUDE>
                 <INCLUDE>ToLocation</INCLUDE>
                 <INCLUDE>FromLocation</INCLUDE>
+                <INCLUDE>ViaFromLocation</INCLUDE>
+                <INCLUDE>ViaToLocation</INCLUDE>
                 <INCLUDE>TimeAtLocation</INCLUDE>
                 <INCLUDE>TrackAtLocation</INCLUDE>
             </QUERY>
@@ -818,10 +967,17 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
                 var destinationSignature = train.destinationSignature || '?';
                 
                 // Left column: TechnicalTrainIdent + destination + delay (NO time)
+                // If at Via station, add indicator
+                var viaIndicator = train.isViaStation ? ' (via)' : '';
                 var $trainSpan = $('<div>')
                     .addClass('train-item same-direction')
                     .append($trainLink)
-                    .append(' ' + destinationSignature + ' (' + delay + ')');
+                    .append(' ' + destinationSignature + viaIndicator + ' (' + delay + ')');
+                
+                // Add via-station class if at unannounced station
+                if (train.isViaStation) {
+                    $trainSpan.addClass('via-station-train');
+                }
                 
                 $trainCell.append($trainSpan);
             });
@@ -848,10 +1004,17 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
                 var destinationSignature = train.destinationSignature || '?';
                 
                 // Right column: TechnicalTrainIdent + destination + delay (NO time)
+                // If at Via station, add indicator
+                var viaIndicator = train.isViaStation ? ' (via)' : '';
                 var $trainSpan = $('<div>')
                     .addClass('train-item opposite-direction')
                     .append($trainLink)
-                    .append(' ' + destinationSignature + ' (' + delay + ')');
+                    .append(' ' + destinationSignature + viaIndicator + ' (' + delay + ')');
+                
+                // Add via-station class if at unannounced station
+                if (train.isViaStation) {
+                    $trainSpan.addClass('via-station-train');
+                }
                 
                 $meetCell.append($trainSpan);
             });

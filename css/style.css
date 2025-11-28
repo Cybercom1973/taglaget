@@ -281,6 +281,17 @@ header h1 {
     font-size: 12px;
 }
 
+/* Kan även heta train-in-transit beroende på din kod: */
+.train-in-transit {
+    color: #f5a623;
+    background-color: rgba(245, 166, 35, 0.2);
+    border: 1px dashed #f5a623;
+    padding: 2px 6px;
+    display: inline-block;
+    font-style: normal;
+    font-size: 12px;
+}
+
 /* Scheduled time */
 .scheduled-time {
     color: #888;
@@ -387,8 +398,44 @@ header h1 {
     .container {
         max-width: 600px;
     }
-    
+
     .search-page {
         padding: 40px;
     }
+}
+
+/* === PATCH för att ta bort vit bakgrund från spacer-cell/transit-tåg === */
+.spacer-cell {
+    background: transparent !important;
+}
+
+.spacer-cell .current-train,
+.spacer-cell .train-in-transit,
+.spacer-cell .transit-train,
+.spacer-cell .train-item.transit-train.current-train,
+.spacer-cell .train-item.train-in-transit.current-train {
+    background: transparent !important;
+}
+
+/* Även extra för säkerhets skull om ytterligare wrapper eller td används: */
+td.spacer-cell,
+td.spacer-cell * {
+    background: transparent !important;
+}
+
+/* Transit current train: enbart grön ram, ingen bakgrund */
+.transit-train.current-train,
+.train-item.transit-train.current-train,
+.train-item.train-in-transit.current-train,
+.train-in-transit.current-train {
+    background: transparent !important;
+    border: 2px solid #4ade80 !important;
+    color: #4ade80 !important;
+    font-weight: bold;
+    margin: 0 !important;
+    padding: 2px 6px !important;
+    box-shadow: none !important;
+}
+.spacer-row, .spacer-row * {
+    background: transparent !important;
 }

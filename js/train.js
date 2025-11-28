@@ -733,7 +733,8 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
                 arrived: false,
                 isCurrent: false,
                 viaFromLocations: announcement.ViaFromLocation || [],
-                viaToLocations: announcement.ViaToLocation || []
+                viaToLocations: announcement.ViaToLocation || [],
+                technicalTrainIdent: announcement.TechnicalTrainIdent || trainNumber
             };
         }
         
@@ -745,6 +746,10 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
             announcementMap[location].departed = !!announcement.TimeAtLocation;
             announcementMap[location].departureTime = announcement.TimeAtLocation;
             announcementMap[location].track = announcement.TrackAtLocation || announcementMap[location].track;
+            // Update TechnicalTrainIdent from departure announcement if available
+            if (announcement.TechnicalTrainIdent) {
+                announcementMap[location].technicalTrainIdent = announcement.TechnicalTrainIdent;
+            }
         }
     });
     
@@ -872,6 +877,13 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
             }
         } else {
             stations[currentIndex].isCurrent = true;
+        }
+        
+        // Update TechnicalTrainIdent based on current position
+        // Use the OTN from the current segment (station where train is at or last passed)
+        if (stations[currentIndex].technicalTrainIdent) {
+            window.trainData.technicalTrainIdent = stations[currentIndex].technicalTrainIdent;
+            $('#train-label').text('Tåg ' + stations[currentIndex].technicalTrainIdent);
         }
     }
     

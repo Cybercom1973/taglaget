@@ -537,6 +537,9 @@ function processTrainDataFromAPI(trainNumber, announcements, orderedRoute, train
 }
 
 function processTrainData(trainNumber, announcements, orderedRoute, trainPosition) {
+    // Store announcements first to ensure data is available for renderTrainTable
+    window.trainData.announcements = announcements;
+    
     const announcementMap = {};
     
     announcements.forEach(function(announcement) {

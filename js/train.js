@@ -880,73 +880,122 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
     // Get final station signature (last station in the original array)
     var finalStation = stations.length > 0 ? stations[stations.length - 1].signature : '?';
     
-    // Reverse the order so end station is at top
-    var reversedStations = stations.slice().reverse();
-    var reversedCurrentIndex = currentIndex >= 0 ? stations.length - 1 - currentIndex : -1;
+    // Find current train's latest operational station (driftplats)
+    var currentTrainDriftplats = null;
+    var currentTrainInfo = null;
     
-    reversedStations.forEach(function(station, index) {
+    // Look for the current train's position
+    for (var i = stations.length - 1; i >= 0; i--) {
+        if (stations[i].isCurrent || stations[i].inTransitZone || stations[i].trainBetweenHereAndNext) {
+            if (stations[i].isCurrent) {
+                currentTrainDriftplats = stations[i].signature;
+                currentTrainInfo = {
+                    station: stations[i],
+                    isInTransit: false
+                };
+            } else if (stations[i].inTransitZone) {
+                // Train is in transit zone - use this Via station as driftplats
+                currentTrainDriftplats = stations[i].signature;
+                currentTrainInfo = {
+                    station: stations[i],
+                    isInTransit: true,
+                    isViaStation: !stations[i].isAnnounced
+                };
+            } else if (stations[i].trainBetweenHereAndNext) {
+                // Train is between stations - find the next station as driftplats
+                if (i + 1 < stations.length) {
+                    currentTrainDriftplats = stations[i + 1].signature;
+                    currentTrainInfo = {
+                        station: stations[i + 1],
+                        isInTransit: true,
+                        isViaStation: !stations[i + 1].isAnnounced,
+                        previousStation: stations[i].signature
+                    };
+                }
+            }
+            break;
+        }
+    }
+    
+    // Collect all unique driftplats where trains currently are
+    var trainsData = window.trainData.trainsAtStations || {};
+    var allDriftplats = new Set();
+    
+    // Add all stations from trainsAtStations (where other trains are)
+    Object.keys(trainsData).forEach(function(sig) {
+        allDriftplats.add(sig);
+    });
+    
+    // Add current train's driftplats
+    if (currentTrainDriftplats) {
+        allDriftplats.add(currentTrainDriftplats);
+    }
+    
+    // Build station maps for sorting and lookup (O(1) lookups instead of O(n) searches)
+    var stationOrderMap = {};
+    var stationInfoMap = {};
+    stations.forEach(function(station, idx) {
+        stationOrderMap[station.signature] = idx;
+        stationInfoMap[station.signature] = station;
+    });
+    
+    // Default order for stations not in the route
+    var DEFAULT_STATION_ORDER = 9999;
+    
+    // Convert to array and sort by station order (reversed so destination is at top)
+    var driftplatsArray = Array.from(allDriftplats).sort(function(a, b) {
+        var orderA = stationOrderMap[a] !== undefined ? stationOrderMap[a] : DEFAULT_STATION_ORDER;
+        var orderB = stationOrderMap[b] !== undefined ? stationOrderMap[b] : DEFAULT_STATION_ORDER;
+        return orderB - orderA; // Reverse order (destination at top)
+    });
+    
+    // Track which row contains the current train for auto-scroll
+    var currentTrainRowIndex = -1;
+    
+    driftplatsArray.forEach(function(driftplatsSig, index) {
         const $row = $('<tr>');
         
-        // Calculate original index for hasPassed check
-        var originalIndex = stations.length - 1 - index;
+        // Check if this is the current train's driftplats
+        var isCurrentTrainHere = (driftplatsSig === currentTrainDriftplats);
         
-        const isCurrent = station.isCurrent;
-        const inTransitZone = station.inTransitZone;
-        const hasPassed = station.isAnnounced && (originalIndex < currentIndex || station.departed);
-        const isUnannounced = !station.isAnnounced;
+        // Get station info from our route if available (O(1) lookup)
+        var stationInfo = stationInfoMap[driftplatsSig] || null;
         
+        var isUnannounced = stationInfo ? !stationInfo.isAnnounced : true;
+        
+        // Column 1: Driftplats (station signature)
         const $stationCell = $('<td>').addClass('station-cell');
-        $stationCell.text(station.signature);
+        $stationCell.text(driftplatsSig);
         
-        if (hasPassed) $stationCell.addClass('passed-station');
         if (isUnannounced) $stationCell.addClass('unannounced-station');
-        if (inTransitZone) $stationCell.addClass('transit-zone');
+        if (isCurrentTrainHere) {
+            $stationCell.addClass('transit-zone');
+            currentTrainRowIndex = index;
+        }
         
         $row.append($stationCell);
         
+        // Column 2: Trains going in same direction
         const $trainCell = $('<td>').addClass('same-direction-cell');
         
-        if (isCurrent) {
-            // Display: TechnicalTrainIdent finalStation (Diff)
-            var delay = formatDelay(station.advertisedTime, station.actualTime);
+        // Add current train if this is its driftplats
+        if (isCurrentTrainHere && currentTrainInfo) {
+            var delay = 'Ingen info';
+            if (currentTrainInfo.station && currentTrainInfo.station.advertisedTime) {
+                delay = formatDelay(currentTrainInfo.station.advertisedTime, currentTrainInfo.station.actualTime);
+            }
+            
+            var statusText = currentTrainInfo.isInTransit ? ' (på väg)' : '';
+            var viaIndicator = currentTrainInfo.isViaStation ? ' (via)' : '';
+            
             const $trainSpan = $('<div>')
                 .addClass('train-item current-train')
-                .text(displayTrainNumber + ' ' + finalStation + ' (' + delay + ')');
+                .text(displayTrainNumber + ' ' + finalStation + viaIndicator + statusText + ' (' + delay + ')');
             $trainCell.append($trainSpan);
         }
         
-        if (inTransitZone) {
-            const $trainSpan = $('<div>')
-                .addClass('train-item transit-train')
-                .text('← ' + displayTrainNumber + ' på väg');
-            $trainCell.append($trainSpan);
-        }
-        
-        if (station.isAnnounced && station.advertisedTime) {
-            const time = formatTime(station.advertisedTime);
-            const $timeSpan = $('<div>').addClass('scheduled-time').text(time);
-            
-            if (station.actualTime) {
-                const delay = formatDelay(station.advertisedTime, station.actualTime);
-                const $delaySpan = $('<span>').addClass('delay-info');
-                
-                // Color coding
-                if (delay === 'I tid') {
-                    $delaySpan.addClass('on-time').text(' (' + delay + ')');
-                } else if (delay.startsWith('+')) {
-                    $delaySpan.addClass('delayed').text(' (' + delay + ')');
-                } else {
-                    $delaySpan.addClass('early').text(' (' + delay + ')');
-                }
-                
-                $timeSpan.append($delaySpan);
-            }
-            $trainCell.append($timeSpan);
-        }
-        
-        // Show trains going in same direction (left column) - without time
-        var trainsData = window.trainData.trainsAtStations || {};
-        var stationTrains = trainsData[station.signature];
+        // Show other trains going in same direction at this driftplats
+        var stationTrains = trainsData[driftplatsSig];
         
         if (stationTrains && stationTrains.sameDirection) {
             stationTrains.sameDirection.forEach(function(train) {
@@ -982,7 +1031,7 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         
         $row.append($trainCell);
         
-        // Column 3 - Trains going in opposite direction (right column) - without time
+        // Column 3: Trains going in opposite direction
         const $meetCell = $('<td>').addClass('meeting-cell');
         
         if (stationTrains && stationTrains.oppositeDirection) {
@@ -1018,34 +1067,13 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         }
         
         $row.append($meetCell);
-        
-        // Check if train is between this station and next (add spacer row)
-        if (station.trainBetweenHereAndNext) {
-            $tbody.append($row); // Append current station row first
-            
-            // Create empty spacer row with train indicator
-            const $spacerRow = $('<tr>').addClass('spacer-row');
-            const $spacerCell1 = $('<td>').addClass('spacer-cell').html('&nbsp;');
-            const $spacerCell2 = $('<td>').addClass('spacer-cell');
-            const $trainHereSpan = $('<div>')
-                .addClass('train-item train-in-transit')
-                .text('🚂 ' + displayTrainNumber + ' →');
-            $spacerCell2.append($trainHereSpan);
-            const $spacerCell3 = $('<td>').addClass('spacer-cell').html('&nbsp;');
-            
-            $spacerRow.append($spacerCell1, $spacerCell2, $spacerCell3);
-            $tbody.append($spacerRow);
-            
-            return; // Skip normal append at the end since we already added the row
-        }
-        
         $tbody.append($row);
     });
     
     // Auto-scroll to current train position
-    if (reversedCurrentIndex >= 0) {
+    if (currentTrainRowIndex >= 0) {
         setTimeout(function() {
-            var $currentRow = $('#table-body tr').eq(reversedCurrentIndex);
+            var $currentRow = $('#table-body tr').eq(currentTrainRowIndex);
             if ($currentRow.length > 0) {
                 $currentRow[0].scrollIntoView({
                     behavior: 'smooth',

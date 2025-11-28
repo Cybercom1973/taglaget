@@ -263,7 +263,6 @@ header h1 {
 /* Current train position - highlighted */
 .current-train {
     color: #4ade80;
-    background-color: rgba(74, 222, 128, 0.2);
     border: 2px solid #4ade80;
     padding: 2px 6px;
     display: inline-block;

@@ -792,7 +792,7 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
         
         if (!addedLocations.has(station.signature)) {
             addedLocations.add(station.signature);
-            // Set _sortOrder to 0 for announced stations
+            // Set _sortOrder to 0 for announced stations (temporary field, cleaned up after sorting)
             station._sortOrder = 0;
             stations.push(station);
         }
@@ -1001,11 +1001,13 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
                 delay = formatDelay(currentTrainInfo.station.advertisedTime, currentTrainInfo.station.actualTime);
             }
             // If train is at Via station, use the previous announced station's delay
+            // departureTime is preferred because it represents when the train left the station,
+            // which is the most recent known timing for a train now at an unannounced Via station
             if (delay === 'Ingen info' && currentTrainInfo.previousStation) {
-                // Find the previous announced station's time info
                 var prevStation = stationInfoMap[currentTrainInfo.previousStation];
                 if (prevStation && prevStation.advertisedTime) {
-                    delay = formatDelay(prevStation.advertisedTime, prevStation.departureTime || prevStation.actualTime);
+                    var actualTimeAtPrevStation = prevStation.departureTime || prevStation.actualTime;
+                    delay = formatDelay(prevStation.advertisedTime, actualTimeAtPrevStation);
                 }
             }
             

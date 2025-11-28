@@ -756,13 +756,14 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
     });
     
     // Sort order constants for via stations
-    var VIA_TO_SORT_ORDER_BASE = 1;      // ViaToLocations come right after parent
-    var VIA_FROM_SORT_ORDER_BASE = 1000; // ViaFromLocations come late in segment
+    // ViaFromLocations come BEFORE the announced station they're attached to
+    // ViaToLocations come AFTER the announced station they're attached to
+    var VIA_FROM_SORT_ORDER_OFFSET = -1000; // ViaFromLocations come before their parent station
+    var VIA_TO_SORT_ORDER_OFFSET = 1;       // ViaToLocations come after their parent station
     
     sortedAnnounced.forEach(function(station, index) {
-        // Get previous announced station's time for ViaFromLocation sorting
-        var prevAnnouncedTime = index > 0 ? sortedAnnounced[index - 1].advertisedTime : null;
-        
+        // ViaFromLocations come BEFORE the current announced station
+        // They should be sorted using the CURRENT station's time but with negative order
         if (station.viaFromLocations && station.viaFromLocations.length > 0) {
             const sortedVia = station.viaFromLocations.slice().sort(function(a, b) {
                 return (a.Order || 0) - (b.Order || 0);
@@ -781,8 +782,9 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
                         departed: false,
                         arrived: false,
                         isCurrent: false,
-                        _sortTime: prevAnnouncedTime,
-                        _sortOrder: VIA_FROM_SORT_ORDER_BASE + viaIndex
+                        // Use current station's time with negative offset to place BEFORE it
+                        _sortTime: station.advertisedTime,
+                        _sortOrder: VIA_FROM_SORT_ORDER_OFFSET + viaIndex
                     });
                 }
             });
@@ -790,9 +792,12 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
         
         if (!addedLocations.has(station.signature)) {
             addedLocations.add(station.signature);
+            // Set _sortOrder to 0 for announced stations
+            station._sortOrder = 0;
             stations.push(station);
         }
         
+        // ViaToLocations come AFTER the current announced station
         if (station.viaToLocations && station.viaToLocations.length > 0) {
             const sortedVia = station.viaToLocations.slice().sort(function(a, b) {
                 return (a.Order || 0) - (b.Order || 0);
@@ -811,8 +816,9 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
                         departed: false,
                         arrived: false,
                         isCurrent: false,
+                        // Use current station's time with positive offset to place AFTER it
                         _sortTime: station.advertisedTime,
-                        _sortOrder: VIA_TO_SORT_ORDER_BASE + viaIndex
+                        _sortOrder: VIA_TO_SORT_ORDER_OFFSET + viaIndex
                     });
                 }
             });
@@ -990,16 +996,24 @@ function renderTrainTable(trainNumber, stations, currentIndex) {
         // Add current train if this is its driftplats
         if (isCurrentTrainHere && currentTrainInfo) {
             var delay = 'Ingen info';
+            // Get delay from the actual announced station's time data
             if (currentTrainInfo.station && currentTrainInfo.station.advertisedTime) {
                 delay = formatDelay(currentTrainInfo.station.advertisedTime, currentTrainInfo.station.actualTime);
             }
+            // If train is at Via station, use the previous announced station's delay
+            if (delay === 'Ingen info' && currentTrainInfo.previousStation) {
+                // Find the previous announced station's time info
+                var prevStation = stationInfoMap[currentTrainInfo.previousStation];
+                if (prevStation && prevStation.advertisedTime) {
+                    delay = formatDelay(prevStation.advertisedTime, prevStation.departureTime || prevStation.actualTime);
+                }
+            }
             
-            var statusText = currentTrainInfo.isInTransit ? ' (på väg)' : '';
             var viaIndicator = currentTrainInfo.isViaStation ? ' (via)' : '';
             
             const $trainSpan = $('<div>')
                 .addClass('train-item current-train')
-                .text(displayTrainNumber + ' ' + finalStation + viaIndicator + statusText + ' (' + delay + ')');
+                .text(displayTrainNumber + ' ' + finalStation + viaIndicator + ' (' + delay + ')');
             $trainCell.append($trainSpan);
         }
         

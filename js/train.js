@@ -154,6 +154,9 @@ function classifyAndStoreTrains(currentTrainNumber, currentAnnouncements, allOth
         
         var announcements = trainsByNumber[trainNum];
         
+        // Guard: skip if no announcements (defensive)
+        if (!announcements || announcements.length === 0) return;
+        
         // Sort by time
         var sorted = announcements.slice().sort(function(a, b) {
             return new Date(a.AdvertisedTimeAtLocation) - new Date(b.AdvertisedTimeAtLocation);

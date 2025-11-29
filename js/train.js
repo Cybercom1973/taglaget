@@ -502,6 +502,210 @@ function extractStationSignatures(announcements) {
     return stations;
 }
 
+// Helper function to build today's station list from announcements (including Via stations)
+function buildTodayStationList(announcements) {
+    var stations = [];
+    var addedStations = new Set();
+    
+    // Sort by advertised time
+    var sorted = announcements.slice().sort(function(a, b) {
+        return new Date(a.AdvertisedTimeAtLocation) - new Date(b.AdvertisedTimeAtLocation);
+    });
+    
+    sorted.forEach(function(ann) {
+        // Add ViaFromLocation (locations before this announced station)
+        if (ann.ViaFromLocation && ann.ViaFromLocation.length > 0) {
+            var sortedViaFrom = ann.ViaFromLocation.slice().sort(function(a, b) {
+                return (a.Order || 0) - (b.Order || 0);
+            });
+            sortedViaFrom.forEach(function(via) {
+                if (!addedStations.has(via.LocationName)) {
+                    addedStations.add(via.LocationName);
+                    stations.push({
+                        signature: via.LocationName,
+                        isAnnounced: false
+                    });
+                }
+            });
+        }
+        
+        // Add the announced location
+        if (!addedStations.has(ann.LocationSignature)) {
+            addedStations.add(ann.LocationSignature);
+            stations.push({
+                signature: ann.LocationSignature,
+                isAnnounced: true,
+                advertisedTime: ann.AdvertisedTimeAtLocation,
+                actualTime: ann.TimeAtLocation,
+                track: ann.TrackAtLocation,
+                activityType: ann.ActivityType
+            });
+        }
+        
+        // Add ViaToLocation (locations after this announced station)
+        if (ann.ViaToLocation && ann.ViaToLocation.length > 0) {
+            var sortedViaTo = ann.ViaToLocation.slice().sort(function(a, b) {
+                return (a.Order || 0) - (b.Order || 0);
+            });
+            sortedViaTo.forEach(function(via) {
+                if (!addedStations.has(via.LocationName)) {
+                    addedStations.add(via.LocationName);
+                    stations.push({
+                        signature: via.LocationName,
+                        isAnnounced: false
+                    });
+                }
+            });
+        }
+    });
+    
+    return stations;
+}
+
+// Merge today's stations into yesterday's route order
+// Yesterday's route provides the master sequence; today's stations are inserted at matching positions
+function mergeRoutesWithYesterdayOrder(yesterdayStations, todayStations) {
+    // If no yesterday data, just return today's stations
+    if (!yesterdayStations || yesterdayStations.length === 0) {
+        return todayStations.map(function(station) {
+            return {
+                signature: station.signature,
+                isAnnounced: station.isAnnounced,
+                advertisedTime: station.advertisedTime,
+                actualTime: station.actualTime,
+                track: station.track,
+                activityType: station.activityType
+            };
+        });
+    }
+    
+    // If no today data, return empty array
+    if (!todayStations || todayStations.length === 0) {
+        return [];
+    }
+    
+    // Build lookup maps for fast access
+    var yesterdayOrderMap = {};
+    yesterdayStations.forEach(function(station, idx) {
+        yesterdayOrderMap[station.signature] = idx;
+    });
+    
+    var todayDataMap = {};
+    todayStations.forEach(function(station) {
+        todayDataMap[station.signature] = station;
+    });
+    
+    // Build the merged route using yesterday's order as the master sequence
+    var mergedRoute = [];
+    var addedStations = new Set();
+    
+    // First, add all stations from yesterday in order, but only if they exist in today's data
+    // or are part of the route segment (between first and last today station)
+    var todaySignatures = todayStations.map(function(s) { return s.signature; });
+    
+    // Find first and last today station positions in yesterday's order
+    var firstTodayIdx = -1;
+    var lastTodayIdx = -1;
+    todaySignatures.forEach(function(sig) {
+        var idx = yesterdayOrderMap[sig];
+        if (idx !== undefined) {
+            if (firstTodayIdx === -1 || idx < firstTodayIdx) {
+                firstTodayIdx = idx;
+            }
+            if (lastTodayIdx === -1 || idx > lastTodayIdx) {
+                lastTodayIdx = idx;
+            }
+        }
+    });
+    
+    // Iterate through yesterday's stations in order
+    yesterdayStations.forEach(function(yStation, idx) {
+        var sig = yStation.signature;
+        
+        // Include station if:
+        // 1. It exists in today's data, OR
+        // 2. It's between the first and last today stations (part of the route segment)
+        var isInTodayData = todayDataMap[sig] !== undefined;
+        var isInRouteSegment = (firstTodayIdx !== -1 && lastTodayIdx !== -1 && 
+                               idx >= firstTodayIdx && idx <= lastTodayIdx);
+        
+        if (isInTodayData || isInRouteSegment) {
+            if (!addedStations.has(sig)) {
+                addedStations.add(sig);
+                
+                if (isInTodayData) {
+                    // Use today's data for this station
+                    var todayData = todayDataMap[sig];
+                    mergedRoute.push({
+                        signature: sig,
+                        isAnnounced: todayData.isAnnounced,
+                        advertisedTime: todayData.advertisedTime,
+                        actualTime: todayData.actualTime,
+                        track: todayData.track,
+                        activityType: todayData.activityType
+                    });
+                } else {
+                    // Station from yesterday's route (not in today's announcements)
+                    // Mark as isFromYesterday so we know it's part of the historical route
+                    mergedRoute.push({
+                        signature: sig,
+                        isAnnounced: yStation.isAnnounced,
+                        isFromYesterday: true
+                    });
+                }
+            }
+        }
+    });
+    
+    // Now add any today stations that weren't in yesterday's route
+    // Insert them at the correct position based on their neighbors
+    todayStations.forEach(function(tStation) {
+        var sig = tStation.signature;
+        if (!addedStations.has(sig)) {
+            // This station is new (not in yesterday's route)
+            // Find the best position to insert it based on neighboring stations
+            var inserted = false;
+            
+            // Find the index of this station in today's list
+            var todayIdx = todaySignatures.indexOf(sig);
+            
+            // Look for the previous station in today's list that exists in merged route
+            var insertAfterIdx = -1;
+            for (var i = todayIdx - 1; i >= 0; i--) {
+                var prevSig = todaySignatures[i];
+                for (var j = 0; j < mergedRoute.length; j++) {
+                    if (mergedRoute[j].signature === prevSig) {
+                        insertAfterIdx = j;
+                        break;
+                    }
+                }
+                if (insertAfterIdx !== -1) break;
+            }
+            
+            var newStation = {
+                signature: sig,
+                isAnnounced: tStation.isAnnounced,
+                advertisedTime: tStation.advertisedTime,
+                actualTime: tStation.actualTime,
+                track: tStation.track,
+                activityType: tStation.activityType
+            };
+            
+            if (insertAfterIdx !== -1) {
+                // Insert after the found station
+                mergedRoute.splice(insertAfterIdx + 1, 0, newStation);
+            } else {
+                // No previous station found, add at the beginning
+                mergedRoute.unshift(newStation);
+            }
+            
+            addedStations.add(sig);
+        }
+    });
+    
+    return mergedRoute;
+}
+
 function loadTrainData(trainNumber) {
     $('#loading').show();
     $('#error-message').hide();
@@ -608,64 +812,15 @@ function loadTrainData(trainNumber) {
             // Update train label to show TechnicalTrainIdent
             $('#train-label').text('Tåg ' + technicalTrainIdent);
             
-            // Step 3: Collect all locations including ViaFromLocation and ViaToLocation from today
+            // Step 3: Build today's station list and merge with yesterday's route order
+            // Yesterday's route provides the master sequence for station ordering
+            var todayStations = buildTodayStationList(announcements);
+            var orderedLocations = mergeRoutesWithYesterdayOrder(yesterdayStations, todayStations);
+            
+            // Collect all location signatures for station name lookup
             var allLocationSignatures = new Set();
-            var orderedLocations = [];
-            
-            // First, add yesterday's stations (prepend to route) - avoiding duplicates
-            yesterdayStations.forEach(function(station) {
-                if (!allLocationSignatures.has(station.signature)) {
-                    allLocationSignatures.add(station.signature);
-                    orderedLocations.push({
-                        signature: station.signature,
-                        isAnnounced: station.isAnnounced,
-                        isFromYesterday: true
-                    });
-                }
-            });
-            
-            // Then add today's stations
-            announcements.forEach(function(ann) {
-                // Add ViaFromLocation (locations before this announced station)
-                if (ann.ViaFromLocation && ann.ViaFromLocation.length > 0) {
-                    ann.ViaFromLocation.forEach(function(via) {
-                        if (!allLocationSignatures.has(via.LocationName)) {
-                            allLocationSignatures.add(via.LocationName);
-                            orderedLocations.push({
-                                signature: via.LocationName,
-                                isAnnounced: false,
-                                order: via.Order || 0
-                            });
-                        }
-                    });
-                }
-                
-                // Add the announced location
-                if (!allLocationSignatures.has(ann.LocationSignature)) {
-                    allLocationSignatures.add(ann.LocationSignature);
-                    orderedLocations.push({
-                        signature: ann.LocationSignature,
-                        isAnnounced: true,
-                        advertisedTime: ann.AdvertisedTimeAtLocation,
-                        actualTime: ann.TimeAtLocation,
-                        track: ann.TrackAtLocation,
-                        activityType: ann.ActivityType
-                    });
-                }
-                
-                // Add ViaToLocation (locations after this announced station)
-                if (ann.ViaToLocation && ann.ViaToLocation.length > 0) {
-                    ann.ViaToLocation.forEach(function(via) {
-                        if (!allLocationSignatures.has(via.LocationName)) {
-                            allLocationSignatures.add(via.LocationName);
-                            orderedLocations.push({
-                                signature: via.LocationName,
-                                isAnnounced: false,
-                                order: via.Order || 0
-                            });
-                        }
-                    });
-                }
+            orderedLocations.forEach(function(loc) {
+                allLocationSignatures.add(loc.signature);
             });
             
             // Step 4: Try to get train position (optional)

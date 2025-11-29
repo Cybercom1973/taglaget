@@ -536,10 +536,10 @@ function buildTodayStationList(announcements) {
     return stations;
 }
 
-// Merge today's stations into yesterday's route order
-// Yesterday's route provides the master sequence; today's stations are inserted at matching positions
+// Use yesterday's exact timetable order as the master sequence
+// Today's train data is overlaid onto yesterday's station order - no re-sorting!
 function mergeRoutesWithYesterdayOrder(yesterdayStations, todayStations) {
-    // If no yesterday data, just return today's stations
+    // If no yesterday data, just return today's stations in their order
     if (!yesterdayStations || yesterdayStations.length === 0) {
         return todayStations.map(function(station) {
             return {
@@ -558,88 +558,56 @@ function mergeRoutesWithYesterdayOrder(yesterdayStations, todayStations) {
         return [];
     }
     
-    // Build lookup maps for fast access
-    var yesterdayOrderMap = {};
-    yesterdayStations.forEach(function(station, idx) {
-        yesterdayOrderMap[station.signature] = idx;
-    });
-    
+    // Build lookup map and signatures array for today's data
     var todayDataMap = {};
     todayStations.forEach(function(station) {
         todayDataMap[station.signature] = station;
     });
+    var todaySignatures = todayStations.map(function(s) { return s.signature; });
     
-    // Build the merged route using yesterday's order as the master sequence
+    // Use yesterday's exact station order as the master list
+    // Simply iterate through yesterday's stations in order and update with today's data where available
     var mergedRoute = [];
     var addedStations = new Set();
     
-    // First, add all stations from yesterday in order, but only if they exist in today's data
-    // or are part of the route segment (between first and last today station)
-    var todaySignatures = todayStations.map(function(s) { return s.signature; });
-    
-    // Find first and last today station positions in yesterday's order
-    var firstTodayIdx = -1;
-    var lastTodayIdx = -1;
-    todaySignatures.forEach(function(sig) {
-        var idx = yesterdayOrderMap[sig];
-        if (idx !== undefined) {
-            if (firstTodayIdx === -1 || idx < firstTodayIdx) {
-                firstTodayIdx = idx;
-            }
-            if (lastTodayIdx === -1 || idx > lastTodayIdx) {
-                lastTodayIdx = idx;
-            }
-        }
-    });
-    
-    // Iterate through yesterday's stations in order
-    yesterdayStations.forEach(function(yStation, idx) {
+    // Iterate through yesterday's stations in exact timetable order (first to last)
+    yesterdayStations.forEach(function(yStation) {
         var sig = yStation.signature;
         
-        // Include station if:
-        // 1. It exists in today's data, OR
-        // 2. It's between the first and last today stations (part of the route segment)
-        var isInTodayData = todayDataMap[sig] !== undefined;
-        var isInRouteSegment = (firstTodayIdx !== -1 && lastTodayIdx !== -1 && 
-                               idx >= firstTodayIdx && idx <= lastTodayIdx);
-        
-        if (isInTodayData || isInRouteSegment) {
-            if (!addedStations.has(sig)) {
-                addedStations.add(sig);
-                
-                if (isInTodayData) {
-                    // Use today's data for this station
-                    var todayData = todayDataMap[sig];
-                    mergedRoute.push({
-                        signature: sig,
-                        isAnnounced: todayData.isAnnounced,
-                        advertisedTime: todayData.advertisedTime,
-                        actualTime: todayData.actualTime,
-                        track: todayData.track,
-                        activityType: todayData.activityType
-                    });
-                } else {
-                    // Station from yesterday's route (not in today's announcements)
-                    // Mark as isFromYesterday so we know it's part of the historical route
-                    // Use isAnnounced from yesterday if defined, otherwise default to false
-                    mergedRoute.push({
-                        signature: sig,
-                        isAnnounced: yStation.isAnnounced === true ? true : false,
-                        isFromYesterday: true
-                    });
-                }
+        if (!addedStations.has(sig)) {
+            addedStations.add(sig);
+            
+            if (todayDataMap[sig] !== undefined) {
+                // Use today's data for this station
+                var todayData = todayDataMap[sig];
+                mergedRoute.push({
+                    signature: sig,
+                    isAnnounced: todayData.isAnnounced,
+                    advertisedTime: todayData.advertisedTime,
+                    actualTime: todayData.actualTime,
+                    track: todayData.track,
+                    activityType: todayData.activityType
+                });
+            } else {
+                // Station from yesterday's route (not in today's announcements)
+                // Mark as isFromYesterday so we know it's part of the historical route
+                mergedRoute.push({
+                    signature: sig,
+                    isAnnounced: yStation.isAnnounced === true ? true : false,
+                    isFromYesterday: true
+                });
             }
         }
     });
     
-    // Build a signature-to-index map for O(1) lookups when inserting new stations
+    // Build a signature-to-index map for inserting any new today stations
     var mergedRouteIndexMap = {};
     mergedRoute.forEach(function(station, idx) {
         mergedRouteIndexMap[station.signature] = idx;
     });
     
-    // Now add any today stations that weren't in yesterday's route
-    // Insert them at the correct position based on their neighbors
+    // Add any today stations that weren't in yesterday's route
+    // Insert them at the correct position based on their neighbors in today's list
     todayStations.forEach(function(tStation) {
         var sig = tStation.signature;
         if (!addedStations.has(sig)) {
@@ -649,7 +617,7 @@ function mergeRoutesWithYesterdayOrder(yesterdayStations, todayStations) {
             // Find the index of this station in today's list
             var todayIdx = todaySignatures.indexOf(sig);
             
-            // Look for the previous station in today's list that exists in merged route (O(1) lookup)
+            // Look for the previous station in today's list that exists in merged route
             var insertAfterIdx = -1;
             for (var i = todayIdx - 1; i >= 0; i--) {
                 var prevSig = todaySignatures[i];

@@ -575,8 +575,9 @@ function loadTrainData(trainNumber) {
                     };
                 });
         })
-        .catch(function() {
-            // If yesterday's fetch fails, continue with today's data only
+        .catch(function(error) {
+            // If yesterday's fetch fails, log and continue with today's data only
+            console.log('Could not fetch yesterday\'s announcements:', error ? error.message : 'Unknown error');
             return TrafikverketAPI.request(todayQuery)
                 .then(function(todayData) {
                     return {
@@ -887,6 +888,9 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
     const stations = [];
     const addedLocations = new Set();
     
+    // Sort time constant for yesterday's stations to ensure they are sorted before today's stations
+    var YESTERDAY_SORT_TIME = '1970-01-01T00:00:00';
+    
     // First, add yesterday's stations (from orderedRoute with isFromYesterday flag)
     // These come before today's stations and are marked as passed
     if (orderedRoute && orderedRoute.length > 0) {
@@ -901,7 +905,7 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
                     arrived: true,   // Yesterday's stations are already passed
                     isCurrent: false,
                     // Use a very early time to ensure yesterday's stations are sorted first
-                    _sortTime: '1970-01-01T00:00:00',
+                    _sortTime: YESTERDAY_SORT_TIME,
                     _sortOrder: index
                 });
             }

@@ -888,129 +888,52 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
     const stations = [];
     const addedLocations = new Set();
     
-    // Sort time constant for yesterday's stations to ensure they are sorted before today's stations
-    var YESTERDAY_SORT_TIME = '1970-01-01T00:00:00';
-    
-    // First, add yesterday's stations (from orderedRoute with isFromYesterday flag)
-    // These come before today's stations and are marked as passed
+    // Build stations array by iterating orderedRoute in order (don't re-sort!)
+    // orderedRoute already contains the correct merged list of stations (yesterday's + today's)
+    // in the proper order. Re-sorting by AdvertisedTimeAtLocation would break the ordering
+    // because yesterday's stations have dates from 1 day ago while today's have today's dates.
     if (orderedRoute && orderedRoute.length > 0) {
-        orderedRoute.forEach(function(loc, index) {
-            if (loc.isFromYesterday && !addedLocations.has(loc.signature) && !announcementMap[loc.signature]) {
-                addedLocations.add(loc.signature);
+        orderedRoute.forEach(function(loc) {
+            if (addedLocations.has(loc.signature)) {
+                return; // Skip duplicates
+            }
+            addedLocations.add(loc.signature);
+            
+            // Check if we have announcement data for this station
+            var annData = announcementMap[loc.signature];
+            
+            if (annData) {
+                // Station has announcement data - use it
+                stations.push(annData);
+            } else if (loc.isFromYesterday) {
+                // Yesterday's station without today's announcement data
                 stations.push({
                     signature: loc.signature,
-                    isAnnounced: false,
+                    isAnnounced: loc.isAnnounced || false,
                     isFromYesterday: true,
                     departed: true,  // Yesterday's stations are already passed
                     arrived: true,   // Yesterday's stations are already passed
                     isCurrent: false,
-                    // Use a very early time to ensure yesterday's stations are sorted first
-                    _sortTime: YESTERDAY_SORT_TIME,
-                    _sortOrder: index
+                    advertisedTime: null,
+                    actualTime: null,
+                    track: '',
+                    activityType: null
+                });
+            } else {
+                // Via station (unannounced) from today's route
+                stations.push({
+                    signature: loc.signature,
+                    isAnnounced: false,
+                    departed: false,
+                    arrived: false,
+                    isCurrent: false,
+                    advertisedTime: null,
+                    actualTime: null,
+                    track: '',
+                    activityType: null
                 });
             }
         });
-    }
-    
-    const sortedAnnounced = Object.values(announcementMap).sort(function(a, b) {
-        return new Date(a.advertisedTime) - new Date(b.advertisedTime);
-    });
-    
-    // Sort order constants for via stations
-    // ViaFromLocations come BEFORE the announced station they're attached to
-    // ViaToLocations come AFTER the announced station they're attached to
-    var VIA_FROM_SORT_ORDER_OFFSET = -1000; // ViaFromLocations come before their parent station
-    var VIA_TO_SORT_ORDER_OFFSET = 1;       // ViaToLocations come after their parent station
-    
-    sortedAnnounced.forEach(function(station, index) {
-        // ViaFromLocations come BEFORE the current announced station
-        // They should be sorted using the CURRENT station's time but with negative order
-        if (station.viaFromLocations && station.viaFromLocations.length > 0) {
-            const sortedVia = station.viaFromLocations.slice().sort(function(a, b) {
-                return (a.Order || 0) - (b.Order || 0);
-            });
-            
-            sortedVia.forEach(function(via, viaIndex) {
-                // Skip if this is an announced station (will be added with proper time later)
-                if (announcementMap[via.LocationName]) {
-                    return;
-                }
-                if (!addedLocations.has(via.LocationName)) {
-                    addedLocations.add(via.LocationName);
-                    stations.push({
-                        signature: via.LocationName,
-                        isAnnounced: false,
-                        departed: false,
-                        arrived: false,
-                        isCurrent: false,
-                        // Use current station's time with negative offset to place BEFORE it
-                        _sortTime: station.advertisedTime,
-                        _sortOrder: VIA_FROM_SORT_ORDER_OFFSET + viaIndex
-                    });
-                }
-            });
-        }
-        
-        if (!addedLocations.has(station.signature)) {
-            addedLocations.add(station.signature);
-            // Set _sortOrder to 0 for announced stations (temporary field, cleaned up after sorting)
-            station._sortOrder = 0;
-            stations.push(station);
-        }
-        
-        // ViaToLocations come AFTER the current announced station
-        if (station.viaToLocations && station.viaToLocations.length > 0) {
-            const sortedVia = station.viaToLocations.slice().sort(function(a, b) {
-                return (a.Order || 0) - (b.Order || 0);
-            });
-            
-            sortedVia.forEach(function(via, viaIndex) {
-                // Skip if this is an announced station (will be added with proper time later)
-                if (announcementMap[via.LocationName]) {
-                    return;
-                }
-                if (!addedLocations.has(via.LocationName)) {
-                    addedLocations.add(via.LocationName);
-                    stations.push({
-                        signature: via.LocationName,
-                        isAnnounced: false,
-                        departed: false,
-                        arrived: false,
-                        isCurrent: false,
-                        // Use current station's time with positive offset to place AFTER it
-                        _sortTime: station.advertisedTime,
-                        _sortOrder: VIA_TO_SORT_ORDER_OFFSET + viaIndex
-                    });
-                }
-            });
-        }
-    });
-    
-    // Sort stations by advertised time (earliest → latest)
-    stations.sort(function(a, b) {
-        var timeA = a.advertisedTime || a._sortTime;
-        var timeB = b.advertisedTime || b._sortTime;
-        
-        if (timeA && timeB) {
-            var dateA = new Date(timeA);
-            var dateB = new Date(timeB);
-            
-            if (dateA.getTime() === dateB.getTime()) {
-                var orderA = a._sortOrder || 0;
-                var orderB = b._sortOrder || 0;
-                return orderA - orderB;
-            }
-            
-            return dateA - dateB;
-        }
-        
-        return 0;
-    });
-    
-    // Clean up temporary sort fields
-    for (var j = 0; j < stations.length; j++) {
-        delete stations[j]._sortTime;
-        delete stations[j]._sortOrder;
     }
     
     let currentIndex = -1;

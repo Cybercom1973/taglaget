@@ -558,11 +558,12 @@ function mergeRoutesWithYesterdayOrder(yesterdayStations, todayStations) {
         return [];
     }
     
-    // Build lookup map of today's data for fast access
+    // Build lookup map and signatures array for today's data
     var todayDataMap = {};
     todayStations.forEach(function(station) {
         todayDataMap[station.signature] = station;
     });
+    var todaySignatures = todayStations.map(function(s) { return s.signature; });
     
     // Use yesterday's exact station order as the master list
     // Simply iterate through yesterday's stations in order and update with today's data where available
@@ -607,8 +608,6 @@ function mergeRoutesWithYesterdayOrder(yesterdayStations, todayStations) {
     
     // Add any today stations that weren't in yesterday's route
     // Insert them at the correct position based on their neighbors in today's list
-    var todaySignatures = todayStations.map(function(s) { return s.signature; });
-    
     todayStations.forEach(function(tStation) {
         var sig = tStation.signature;
         if (!addedStations.has(sig)) {

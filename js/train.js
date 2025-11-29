@@ -436,21 +436,106 @@ $(document).ready(function() {
     }, 30000);
 });
 
+// Helper function to get yesterday's date string
+function getYesterdayDate() {
+    var yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    return yesterday.toISOString().split('T')[0];
+}
+
+// Helper function to extract station signatures from announcements (including Via stations)
+function extractStationSignatures(announcements) {
+    var stations = [];
+    var addedStations = new Set();
+    
+    // Sort by advertised time
+    var sorted = announcements.slice().sort(function(a, b) {
+        return new Date(a.AdvertisedTimeAtLocation) - new Date(b.AdvertisedTimeAtLocation);
+    });
+    
+    sorted.forEach(function(ann) {
+        // Add ViaFromLocation (locations before this announced station)
+        if (ann.ViaFromLocation && ann.ViaFromLocation.length > 0) {
+            var sortedViaFrom = ann.ViaFromLocation.slice().sort(function(a, b) {
+                return (a.Order || 0) - (b.Order || 0);
+            });
+            sortedViaFrom.forEach(function(via) {
+                if (!addedStations.has(via.LocationName)) {
+                    addedStations.add(via.LocationName);
+                    stations.push({
+                        signature: via.LocationName,
+                        isAnnounced: false,
+                        isFromYesterday: true
+                    });
+                }
+            });
+        }
+        
+        // Add the announced location
+        if (!addedStations.has(ann.LocationSignature)) {
+            addedStations.add(ann.LocationSignature);
+            stations.push({
+                signature: ann.LocationSignature,
+                isAnnounced: true,
+                isFromYesterday: true
+            });
+        }
+        
+        // Add ViaToLocation (locations after this announced station)
+        if (ann.ViaToLocation && ann.ViaToLocation.length > 0) {
+            var sortedViaTo = ann.ViaToLocation.slice().sort(function(a, b) {
+                return (a.Order || 0) - (b.Order || 0);
+            });
+            sortedViaTo.forEach(function(via) {
+                if (!addedStations.has(via.LocationName)) {
+                    addedStations.add(via.LocationName);
+                    stations.push({
+                        signature: via.LocationName,
+                        isAnnounced: false,
+                        isFromYesterday: true
+                    });
+                }
+            });
+        }
+    });
+    
+    return stations;
+}
+
 function loadTrainData(trainNumber) {
     $('#loading').show();
     $('#error-message').hide();
     $('#train-table').hide();
     
-    const date = new Date().toISOString().split('T')[0];
-    const escapedTrainNumber = escapeXml(trainNumber);
+    var today = new Date().toISOString().split('T')[0];
+    var yesterday = getYesterdayDate();
+    var escapedTrainNumber = escapeXml(trainNumber);
     
-    // Step 1: Get train announcements with ViaLocations
-    const announcementQuery = `
+    // Step 1: Fetch yesterday's announcements to get the complete historical route
+    var yesterdayQuery = `
         <QUERY objecttype="TrainAnnouncement" schemaversion="1.6" orderby="AdvertisedTimeAtLocation">
         <FILTER>
             <AND>
                 <EQ name="AdvertisedTrainIdent" value="${escapedTrainNumber}" />
-                <EQ name="ScheduledDepartureDateTime" value="${date}" />
+                <EQ name="ScheduledDepartureDateTime" value="${yesterday}" />
+            </AND>
+        </FILTER>
+            <INCLUDE>ActivityType</INCLUDE>
+            <INCLUDE>AdvertisedTimeAtLocation</INCLUDE>
+            <INCLUDE>AdvertisedTrainIdent</INCLUDE>
+            <INCLUDE>LocationSignature</INCLUDE>
+            <INCLUDE>ViaFromLocation</INCLUDE>
+            <INCLUDE>ViaToLocation</INCLUDE>
+        </QUERY>
+    `;
+    
+    // Step 2: Get today's train announcements with ViaLocations
+    var todayQuery = `
+        <QUERY objecttype="TrainAnnouncement" schemaversion="1.6" orderby="AdvertisedTimeAtLocation">
+        <FILTER>
+            <AND>
+                <EQ name="AdvertisedTrainIdent" value="${escapedTrainNumber}" />
+                <EQ name="ScheduledDepartureDateTime" value="${today}" />
             </AND>
         </FILTER>
             <INCLUDE>ActivityType</INCLUDE>
@@ -469,8 +554,42 @@ function loadTrainData(trainNumber) {
         </QUERY>
     `;
     
-    TrafikverketAPI.request(announcementQuery)
-        .then(function(announcementData) {
+    // Fetch yesterday's data first, then today's data
+    TrafikverketAPI.request(yesterdayQuery)
+        .then(function(yesterdayData) {
+            var yesterdayAnnouncements = [];
+            if (yesterdayData.RESPONSE && yesterdayData.RESPONSE.RESULT && 
+                yesterdayData.RESPONSE.RESULT[0] && yesterdayData.RESPONSE.RESULT[0].TrainAnnouncement) {
+                yesterdayAnnouncements = yesterdayData.RESPONSE.RESULT[0].TrainAnnouncement;
+            }
+            
+            // Extract station signatures from yesterday's announcements
+            var yesterdayStations = extractStationSignatures(yesterdayAnnouncements);
+            
+            // Now fetch today's announcements
+            return TrafikverketAPI.request(todayQuery)
+                .then(function(todayData) {
+                    return {
+                        yesterdayStations: yesterdayStations,
+                        todayData: todayData
+                    };
+                });
+        })
+        .catch(function(error) {
+            // If yesterday's fetch fails, log and continue with today's data only
+            console.log('Could not fetch yesterday\'s announcements:', error ? error.message : 'Unknown error');
+            return TrafikverketAPI.request(todayQuery)
+                .then(function(todayData) {
+                    return {
+                        yesterdayStations: [],
+                        todayData: todayData
+                    };
+                });
+        })
+        .then(function(result) {
+            var yesterdayStations = result.yesterdayStations;
+            var announcementData = result.todayData;
+            
             var announcements = [];
             if (announcementData.RESPONSE && announcementData.RESPONSE.RESULT && 
                 announcementData.RESPONSE.RESULT[0] && announcementData.RESPONSE.RESULT[0].TrainAnnouncement) {
@@ -489,10 +608,23 @@ function loadTrainData(trainNumber) {
             // Update train label to show TechnicalTrainIdent
             $('#train-label').text('Tåg ' + technicalTrainIdent);
             
-            // Step 2: Collect all locations including ViaFromLocation and ViaToLocation
-            const allLocationSignatures = new Set();
-            const orderedLocations = [];
+            // Step 3: Collect all locations including ViaFromLocation and ViaToLocation from today
+            var allLocationSignatures = new Set();
+            var orderedLocations = [];
             
+            // First, add yesterday's stations (prepend to route) - avoiding duplicates
+            yesterdayStations.forEach(function(station) {
+                if (!allLocationSignatures.has(station.signature)) {
+                    allLocationSignatures.add(station.signature);
+                    orderedLocations.push({
+                        signature: station.signature,
+                        isAnnounced: station.isAnnounced,
+                        isFromYesterday: true
+                    });
+                }
+            });
+            
+            // Then add today's stations
             announcements.forEach(function(ann) {
                 // Add ViaFromLocation (locations before this announced station)
                 if (ann.ViaFromLocation && ann.ViaFromLocation.length > 0) {
@@ -536,8 +668,8 @@ function loadTrainData(trainNumber) {
                 }
             });
             
-            // Step 3: Try to get train position (optional)
-            const positionQuery = `
+            // Step 4: Try to get train position (optional)
+            var positionQuery = `
                 <QUERY objecttype="TrainPosition" schemaversion="1.1" namespace="järnväg.trafikinfo">
                     <FILTER>
                         <EQ name="Train.AdvertisedTrainNumber" value="${escapedTrainNumber}" />
@@ -755,6 +887,30 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
     
     const stations = [];
     const addedLocations = new Set();
+    
+    // Sort time constant for yesterday's stations to ensure they are sorted before today's stations
+    var YESTERDAY_SORT_TIME = '1970-01-01T00:00:00';
+    
+    // First, add yesterday's stations (from orderedRoute with isFromYesterday flag)
+    // These come before today's stations and are marked as passed
+    if (orderedRoute && orderedRoute.length > 0) {
+        orderedRoute.forEach(function(loc, index) {
+            if (loc.isFromYesterday && !addedLocations.has(loc.signature) && !announcementMap[loc.signature]) {
+                addedLocations.add(loc.signature);
+                stations.push({
+                    signature: loc.signature,
+                    isAnnounced: false,
+                    isFromYesterday: true,
+                    departed: true,  // Yesterday's stations are already passed
+                    arrived: true,   // Yesterday's stations are already passed
+                    isCurrent: false,
+                    // Use a very early time to ensure yesterday's stations are sorted first
+                    _sortTime: YESTERDAY_SORT_TIME,
+                    _sortOrder: index
+                });
+            }
+        });
+    }
     
     const sortedAnnounced = Object.values(announcementMap).sort(function(a, b) {
         return new Date(a.advertisedTime) - new Date(b.advertisedTime);

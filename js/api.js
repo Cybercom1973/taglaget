@@ -7,8 +7,8 @@ const API_CONFIG = {
     useProxy: false,
     proxyUrl: '/api',
     
-    // Trafikverket API endpoint
-    trafikverketUrl: 'https://api.trafikinfo.trafikverket.se/v2/data.json'
+    // Trafikverket API endpoint - use data.xml for XML requests
+    trafikverketUrl: 'https://api.trafikinfo.trafikverket.se/v2/data.xml'
 };
 
 // API wrapper for Trafikverket
@@ -34,11 +34,11 @@ const TrafikverketAPI = {
                     data: JSON.stringify({ query: query }),
                     success: resolve,
                     error: function(xhr, status, error) {
-                        reject(new Error(error || 'API request failed'));
+                        reject(new Error(error || 'API request failed')); 
                     }
                 });
             } else {
-                // Direct API call (only for development)
+                // Direct API call
                 const xmlRequest = `
                     <REQUEST>
                         <LOGIN authenticationkey="${self.apiKey}" />
@@ -49,10 +49,11 @@ const TrafikverketAPI = {
                 $.ajax({
                     url: API_CONFIG.trafikverketUrl,
                     method: 'POST',
-                    contentType: 'text/xml',
-                    data: xmlRequest,
+                    contentType: 'application/xml; charset=utf-8',
+                    data: xmlRequest.trim(),
                     success: resolve,
                     error: function(xhr, status, error) {
+                        console.error('API Error Response:', xhr.responseText);
                         reject(new Error(error || 'API request failed'));
                     }
                 });

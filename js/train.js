@@ -938,6 +938,10 @@ function processTrainData(trainNumber, announcements, orderedRoute, trainPositio
     
     let currentIndex = -1;
     for (let i = 0; i < stations.length; i++) {
+        // Skip yesterday's stations - only use today's announcements for current position
+        if (stations[i].isFromYesterday) {
+            continue;
+        }
         if (stations[i].isAnnounced && (stations[i].departed || stations[i].arrived)) {
             currentIndex = i;
         }

@@ -514,20 +514,7 @@ function buildTodayStationList(announcements) {
     
     sorted.forEach(function(ann) {
         // Add ViaFromLocation (locations before this announced station)
-        if (ann.ViaFromLocation && ann.ViaFromLocation.length > 0) {
-            var sortedViaFrom = ann.ViaFromLocation.slice().sort(function(a, b) {
-                return (a.Order || 0) - (b.Order || 0);
-            });
-            sortedViaFrom.forEach(function(via) {
-                if (!addedStations.has(via.LocationName)) {
-                    addedStations.add(via.LocationName);
-                    stations.push({
-                        signature: via.LocationName,
-                        isAnnounced: false
-                    });
-                }
-            });
-        }
+        processViaStations(ann.ViaFromLocation, addedStations, stations);
         
         // Add the announced location
         if (!addedStations.has(ann.LocationSignature)) {
@@ -543,20 +530,7 @@ function buildTodayStationList(announcements) {
         }
         
         // Add ViaToLocation (locations after this announced station)
-        if (ann.ViaToLocation && ann.ViaToLocation.length > 0) {
-            var sortedViaTo = ann.ViaToLocation.slice().sort(function(a, b) {
-                return (a.Order || 0) - (b.Order || 0);
-            });
-            sortedViaTo.forEach(function(via) {
-                if (!addedStations.has(via.LocationName)) {
-                    addedStations.add(via.LocationName);
-                    stations.push({
-                        signature: via.LocationName,
-                        isAnnounced: false
-                    });
-                }
-            });
-        }
+        processViaStations(ann.ViaToLocation, addedStations, stations);
     });
     
     return stations;
@@ -647,14 +621,21 @@ function mergeRoutesWithYesterdayOrder(yesterdayStations, todayStations) {
                 } else {
                     // Station from yesterday's route (not in today's announcements)
                     // Mark as isFromYesterday so we know it's part of the historical route
+                    // Use isAnnounced from yesterday if defined, otherwise default to false
                     mergedRoute.push({
                         signature: sig,
-                        isAnnounced: yStation.isAnnounced,
+                        isAnnounced: yStation.isAnnounced === true ? true : false,
                         isFromYesterday: true
                     });
                 }
             }
         }
+    });
+    
+    // Build a signature-to-index map for O(1) lookups when inserting new stations
+    var mergedRouteIndexMap = {};
+    mergedRoute.forEach(function(station, idx) {
+        mergedRouteIndexMap[station.signature] = idx;
     });
     
     // Now add any today stations that weren't in yesterday's route
@@ -664,22 +645,18 @@ function mergeRoutesWithYesterdayOrder(yesterdayStations, todayStations) {
         if (!addedStations.has(sig)) {
             // This station is new (not in yesterday's route)
             // Find the best position to insert it based on neighboring stations
-            var inserted = false;
             
             // Find the index of this station in today's list
             var todayIdx = todaySignatures.indexOf(sig);
             
-            // Look for the previous station in today's list that exists in merged route
+            // Look for the previous station in today's list that exists in merged route (O(1) lookup)
             var insertAfterIdx = -1;
             for (var i = todayIdx - 1; i >= 0; i--) {
                 var prevSig = todaySignatures[i];
-                for (var j = 0; j < mergedRoute.length; j++) {
-                    if (mergedRoute[j].signature === prevSig) {
-                        insertAfterIdx = j;
-                        break;
-                    }
+                if (mergedRouteIndexMap[prevSig] !== undefined) {
+                    insertAfterIdx = mergedRouteIndexMap[prevSig];
+                    break;
                 }
-                if (insertAfterIdx !== -1) break;
             }
             
             var newStation = {
@@ -694,9 +671,17 @@ function mergeRoutesWithYesterdayOrder(yesterdayStations, todayStations) {
             if (insertAfterIdx !== -1) {
                 // Insert after the found station
                 mergedRoute.splice(insertAfterIdx + 1, 0, newStation);
+                // Update the index map for all stations after the insertion point
+                mergedRoute.forEach(function(s, i) {
+                    mergedRouteIndexMap[s.signature] = i;
+                });
             } else {
                 // No previous station found, add at the beginning
                 mergedRoute.unshift(newStation);
+                // Rebuild the index map
+                mergedRoute.forEach(function(s, i) {
+                    mergedRouteIndexMap[s.signature] = i;
+                });
             }
             
             addedStations.add(sig);

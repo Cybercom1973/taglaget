@@ -444,15 +444,54 @@ function getYesterdayDate() {
 }
 
 // Helper function to extract station signatures from announcements (including Via stations)
+// Priority: Use ViaLocation array for complete ordered route, fallback to ViaFromLocation/ViaToLocation
 function extractStationSignatures(announcements) {
     var stations = [];
     var addedStations = new Set();
     
-    // Sort by advertised time
+    // Sort announcements by advertised time
     var sorted = announcements.slice().sort(function(a, b) {
         return new Date(a.AdvertisedTimeAtLocation) - new Date(b.AdvertisedTimeAtLocation);
     });
     
+    // First, try to find ViaLocation array from any announcement
+    // ViaLocation contains the complete ordered list of all stations on the route
+    var viaLocations = null;
+    for (var i = 0; i < sorted.length; i++) {
+        if (sorted[i].ViaLocation && sorted[i].ViaLocation.length > 0) {
+            viaLocations = sorted[i].ViaLocation;
+            break;
+        }
+    }
+    
+    // If ViaLocation array is available, use it as the master route order
+    if (viaLocations) {
+        // Sort ViaLocation by Order field to get correct sequence
+        var sortedVia = viaLocations.slice().sort(function(a, b) {
+            return (a.Order || 0) - (b.Order || 0);
+        });
+        
+        // Extract LocationSignature from each ViaLocation in order
+        sortedVia.forEach(function(via) {
+            var sig = via.LocationSignature;
+            if (sig && !addedStations.has(sig)) {
+                addedStations.add(sig);
+                // Check if this station is an announced station
+                var isAnnounced = sorted.some(function(ann) {
+                    return ann.LocationSignature === sig;
+                });
+                stations.push({
+                    signature: sig,
+                    isAnnounced: isAnnounced,
+                    isFromYesterday: true
+                });
+            }
+        });
+        
+        return stations;
+    }
+    
+    // Fallback: Use ViaFromLocation/ViaToLocation from each announcement
     sorted.forEach(function(ann) {
         // Add ViaFromLocation (locations before this announced station)
         if (ann.ViaFromLocation && ann.ViaFromLocation.length > 0) {
@@ -669,6 +708,7 @@ function loadTrainData(trainNumber) {
     var escapedTrainNumber = escapeXml(trainNumber);
     
     // Step 1: Fetch yesterday's announcements to get the complete historical route
+    // ViaLocation contains the complete ordered list of all stations the train passes through
     var yesterdayQuery = `
         <QUERY objecttype="TrainAnnouncement" schemaversion="1.6" orderby="AdvertisedTimeAtLocation">
         <FILTER>
@@ -683,6 +723,7 @@ function loadTrainData(trainNumber) {
             <INCLUDE>LocationSignature</INCLUDE>
             <INCLUDE>ViaFromLocation</INCLUDE>
             <INCLUDE>ViaToLocation</INCLUDE>
+            <INCLUDE>ViaLocation</INCLUDE>
         </QUERY>
     `;
     
@@ -704,6 +745,7 @@ function loadTrainData(trainNumber) {
             <INCLUDE>FromLocation</INCLUDE>
             <INCLUDE>ViaFromLocation</INCLUDE>
             <INCLUDE>ViaToLocation</INCLUDE>
+            <INCLUDE>ViaLocation</INCLUDE>
             <INCLUDE>TimeAtLocation</INCLUDE>
             <INCLUDE>TimeAtLocationWithSeconds</INCLUDE>
             <INCLUDE>TrackAtLocation</INCLUDE>

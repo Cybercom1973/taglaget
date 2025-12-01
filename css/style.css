@@ -284,6 +284,17 @@ header h1 {
     font-size: 12px;
 }
 
+/* Externa driftplatser (från andra tåg) */
+.external-station {
+    opacity: 0.7;
+    font-style: italic;
+}
+
+.external-station .station-link::before {
+    content: "↳ ";
+    color: #888;
+}
+
 /* Tåg-items i listan */
 .train-item {
     margin-bottom: 6px;

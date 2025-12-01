@@ -197,8 +197,8 @@ function renderTable(route, otherTrains, mySearchIdent, myDestSig) {
     latestMap.forEach(t => {
         const ageMinutes = Math.abs((now - parseDate(t.TimeAtLocation)) / 60000);
         
-        // REGEL 1: Avgång -> Max 1 min (Det har åkt!)
-        if (t.ActivityType === 'Avgang' && ageMinutes > 1) return;
+        // REGEL 1: Avgång -> Visa vid senaste kända position (ta bort 1-minutsregeln)
+        // Tåg som avgått visas nu vid sin senaste kända driftplats
         
         // REGEL 2: Ankomst -> Konfigurerbar tid (Står inne)
         if (t.ActivityType === 'Ankomst' && ageMinutes > hideStationaryMinutes) return;
@@ -210,9 +210,51 @@ function renderTable(route, otherTrains, mySearchIdent, myDestSig) {
         activeOtherTrains.push(t);
     });
 
+    // Samla driftplatser från andra tåg som inte finns i rutten
+    const routeSignatures = new Set(route.map(r => r.signature));
+    const missingStations = new Map();
+
+    activeOtherTrains.forEach(t => {
+        const sig = t.LocationSignature;
+        if (!routeSignatures.has(sig) && !missingStations.has(sig)) {
+            missingStations.set(sig, {
+                signature: sig,
+                isAnnounced: false,
+                advertised: t.AdvertisedTimeAtLocation,
+                actual: t.TimeAtLocation,
+                track: t.TrackAtLocation,
+                sortTime: parseDate(t.TimeAtLocation).getTime(),
+                technicalIdent: null,
+                isExternalStation: true // Markera som extern driftplats
+            });
+        }
+    });
+
+    // Lägg till saknade driftplatser i rutten, sorterade baserat på tid
+    let displayRoute = route;
+    if (missingStations.size > 0) {
+        const allStations = [...route, ...missingStations.values()];
+        // Sortera baserat på sortTime (omvänd ordning, mål överst)
+        allStations.sort((a, b) => b.sortTime - a.sortTime);
+        displayRoute = allStations;
+        
+        // Uppdatera currentPosIndex efter att externa stationer lagts till
+        currentPosIndex = displayRoute.findIndex(s => 
+            route.find(r => r.signature === s.signature && r.actual)
+        );
+        if (currentPosIndex === -1) {
+            // Fallback: hitta första station med actual
+            for (let i = 0; i < displayRoute.length; i++) {
+                if (displayRoute[i].actual && !displayRoute[i].isExternalStation) {
+                    currentPosIndex = i;
+                    break;
+                }
+            }
+        }
+    }
+
     // Begränsa antal trafikplatser som visas
     const maxStations = parseInt(localStorage.getItem('taglaget_maxStations')) || 0;
-    let displayRoute = route;
 
     if (maxStations > 0 && currentPosIndex >= 0) {
         const halfWindow = Math.floor(maxStations / 2);
@@ -253,6 +295,7 @@ function renderTable(route, otherTrains, mySearchIdent, myDestSig) {
         
         $stationCell.append($link);
         if (!station.isAnnounced) $stationCell.addClass('unannounced-station');
+        if (station.isExternalStation) $stationCell.addClass('external-station');
         if (index === currentPosIndex && index === 0) $stationCell.addClass('current-position-glow');
         $row.append($stationCell);
         

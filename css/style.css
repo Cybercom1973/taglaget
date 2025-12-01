@@ -1,4 +1,4 @@
-/* Reset and base styles */
+/* --- RESET & BASICS --- */
 * {
     margin: 0;
     padding: 0;
@@ -6,442 +6,393 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-    background-color: #000;
-    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background-color: #121212; /* Mörk bakgrund */
+    color: #e0e0e0;
     min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
 }
 
 .container {
     max-width: 100%;
     margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
 }
 
-/* Header */
+/* --- HEADER (Gemensam för alla sidor) --- */
 header {
     display: flex;
     align-items: center;
-    padding: 15px;
-    background-color: #1a1a1a;
+    padding: 12px 16px;
+    background-color: #1e1e1e;
     border-bottom: 1px solid #333;
-}
-
-.menu-icon {
-    font-size: 24px;
-    cursor: pointer;
-    margin-right: 15px;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
 }
 
 .logo {
     font-size: 24px;
-    margin-right: 10px;
-    color: #f5a623;
+    margin-right: 12px;
 }
 
 header h1 {
-    font-size: 20px;
-    font-weight: 500;
+    font-size: 18px;
+    font-weight: 600;
+    color: #fff;
 }
 
-/* Search page */
+/* --- SÖKSIDAN (index.html) --- */
 .search-page {
     padding: 20px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
 }
 
 .search-container {
-    margin-bottom: 30px;
+    background-color: #1e1e1e;
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
 }
 
 .search-container h2 {
-    margin-bottom: 20px;
-    font-weight: 400;
-    color: #ccc;
-}
-
-#search-form {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
+    margin-bottom: 16px;
+    font-size: 16px;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .search-input-wrapper {
     position: relative;
-    display: flex;
-    align-items: center;
+    margin-bottom: 12px;
 }
 
 #train-number {
     width: 100%;
-    padding: 15px;
-    padding-right: 40px;
+    padding: 16px;
+    padding-right: 50px;
     font-size: 18px;
-    background-color: #2a2a2a;
-    border: 1px solid #444;
+    background-color: #2c2c2c;
+    border: 2px solid #333;
     border-radius: 8px;
     color: #fff;
+    transition: border-color 0.2s;
 }
 
 #train-number:focus {
     outline: none;
-    border-color: #f5a623;
-}
-
-#train-number::placeholder {
-    color: #888;
+    border-color: #4da6ff;
 }
 
 .clear-btn {
     position: absolute;
-    right: 10px;
+    right: 0;
+    top: 0;
+    height: 100%;
+    width: 50px;
     background: none;
     border: none;
     color: #888;
-    font-size: 18px;
+    font-size: 20px;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .search-btn {
-    padding: 15px;
+    width: 100%;
+    padding: 16px;
     font-size: 18px;
     background-color: #f5a623;
+    color: #121212;
     border: none;
     border-radius: 8px;
-    color: #000;
+    font-weight: 700;
     cursor: pointer;
-    font-weight: 600;
+    transition: background-color 0.2s;
 }
 
-.search-btn:hover {
-    background-color: #e6951a;
+.search-btn:active {
+    background-color: #d48806;
+    transform: scale(0.98);
 }
 
-/* Recent searches */
-.recent-searches {
-    margin-top: 30px;
-}
-
+/* Senaste sökningar */
 .recent-searches h3 {
     font-size: 14px;
-    color: #888;
+    color: #666;
     margin-bottom: 10px;
-    font-weight: 400;
-}
-
-#recent-list {
-    list-style: none;
+    padding-left: 5px;
 }
 
 .recent-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px;
-    background-color: #1a1a1a;
-    border-radius: 6px;
-    margin-bottom: 8px;
+    padding: 16px;
+    background-color: #1e1e1e;
+    border-bottom: 1px solid #333;
     cursor: pointer;
 }
 
-.recent-item:hover {
-    background-color: #2a2a2a;
-}
+.recent-item:first-child { border-top-left-radius: 12px; border-top-right-radius: 12px; }
+.recent-item:last-child { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; border-bottom: none; }
 
 .recent-train {
-    color: #fff;
+    font-size: 16px;
+    font-weight: 500;
 }
 
 .delete-recent {
     background: none;
     border: none;
     color: #666;
-    cursor: pointer;
-    font-size: 16px;
+    padding: 10px;
+    font-size: 18px;
 }
 
-/* Error message */
-.error-message {
-    color: #ff4444;
-    margin-top: 10px;
-    font-size: 14px;
-}
+/* --- TÅGVYN (train.html) --- */
 
-/* Train header */
+/* Sub-header med tåginfo och stäng-knapp */
 .train-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 15px;
-    background-color: #2a2a2a;
-    border-radius: 8px;
-    margin: 10px;
+    padding: 12px 16px;
+    background-color: #2c2c2c;
+    border-bottom: 1px solid #444;
+    position: sticky;
+    top: 54px; /* Justera om huvud-headerns höjd ändras */
+    z-index: 999;
 }
 
 .train-label {
-    font-size: 18px;
+    font-size: 16px;
+    font-weight: 700;
     color: #fff;
 }
 
 .close-btn {
-    color: #888;
-    text-decoration: none;
-    font-size: 20px;
+    background: rgba(255,255,255,0.1);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 18px;
 }
 
-/* Train table */
 .train-view {
-    padding: 10px;
-    padding-bottom: 80px;
+    padding-bottom: 80px; /* Plats för refresh-knappen */
 }
 
-.loading {
+.last-update {
     text-align: center;
-    padding: 40px;
-    color: #888;
+    font-size: 11px;
+    color: #666;
+    padding: 8px 0;
 }
 
+/* --- TABELLEN (Mobilanpassad) --- */
 .train-table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
 }
 
-.train-table th {
+/* Sticky Header för tabellen */
+.train-table thead th {
+    position: sticky;
+    top: 110px; /* Header + Sub-header */
+    background-color: #121212;
+    z-index: 998;
+    padding: 8px 4px;
     text-align: left;
-    padding: 10px 5px;
+    font-size: 11px;
     color: #888;
-    font-weight: 400;
-    font-size: 12px;
-    border-bottom: 1px solid #333;
+    text-transform: uppercase;
+    border-bottom: 2px solid #333;
 }
 
-.train-table td {
-    padding: 8px 5px;
+.train-table tbody td {
+    padding: 8px 4px;
     border-bottom: 1px solid #222;
     vertical-align: top;
+    font-size: 13px;
+    line-height: 1.4;
 }
 
+/* Kolumnbredder */
 .station-cell {
-    color: #fff;
-    font-weight: 500;
-    width: 60px;
-}
-
-/* Passed station - dimmed */
-.station-cell.passed-station {
-    color: #666;
-}
-
-/* Unannounced station - smaller and gray */
-.station-cell.unannounced-station {
-    color: #555;
-    font-weight: 400;
-    font-size: 12px;
-}
-
-/* Transit zone - where train might be */
-.station-cell.transit-zone {
-    color: #f5a623;
-    font-weight: 500;
-}
-
-.same-direction-cell,
-.meeting-cell {
-    font-style: italic;
-}
-
-.train-item {
-    margin-bottom: 3px;
-}
-
-.same-origin {
-    color: #28a745;  /* Green - trains from same origin */
-}
-
-.same-destination {
-    color: #007bff;  /* Blue - trains to same destination */
-}
-
-/* Current train position - highlighted */
-.current-train {
-    color: #4ade80;
-    border: 2px solid #4ade80;
-    padding: 2px 6px;
-    display: inline-block;
-    font-style: normal;
+    width: 20%;
     font-weight: 600;
+    color: #ddd;
+    word-break: break-all;
 }
 
-/* Train in transit between stations */
-.transit-train {
-    color: #f5a623;
-    background-color: rgba(245, 166, 35, 0.2);
-    border: 1px dashed #f5a623;
-    padding: 2px 6px;
+.same-direction-cell {
+    width: 40%;
+    background-color: rgba(255,255,255,0.02);
+}
+
+.meeting-cell {
+    width: 40%;
+}
+
+/* Länkar till stationer */
+.station-link {
+    border-bottom: none;
+}
+
+/* Oannonserade (tekniska) driftplatser */
+.unannounced-station .station-link {
+    color: #555;
+    font-weight: normal;
+    font-size: 12px;
+}
+
+/* Tåg-items i listan */
+.train-item {
+    margin-bottom: 6px;
+    display: block;
+}
+
+.train-item a {
+    color: #bbb;
+    font-weight: 500;
+}
+
+/* Eget tåg (Boxen) */
+.current-train-box {
     display: inline-block;
-    font-style: normal;
-    font-size: 12px;
+    width: 100%;
+    text-align: center;
+    background-color: rgba(77, 166, 255, 0.15);
+    border: 1px solid #4da6ff;
+    border-radius: 6px;
+    padding: 6px 4px;
+    color: #fff;
+    font-weight: 700;
+    margin: 4px 0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
 
-/* Kan även heta train-in-transit beroende på din kod: */
-.train-in-transit {
-    color: #f5a623;
-    background-color: rgba(245, 166, 35, 0.2);
-    border: 1px dashed #f5a623;
-    padding: 2px 6px;
-    display: inline-block;
-    font-style: normal;
-    font-size: 12px;
+/* Glow-effekt för raden vi är på */
+.current-position-glow {
+    background: linear-gradient(90deg, rgba(77, 166, 255, 0.1) 0%, rgba(0,0,0,0) 80%);
+    border-left: 3px solid #4da6ff;
 }
 
-/* Scheduled time */
-.scheduled-time {
-    color: #888;
-    font-size: 12px;
-    font-style: normal;
+/* Statusfärger */
+.on-time { color: #4caf50; font-weight: 700; }
+.delayed { color: #ff5252; font-weight: 700; }
+
+/* --- MELLANRUM / SPÅR-INDIKATOR --- */
+.spacer-row td {
+    height: 40px; /* Tillräcklig höjd för tågboxen */
+    background-color: #121212; /* Samma som bakgrunden */
+    border-left: none;
+    border-right: none;
+    text-align: center;
+    vertical-align: middle;
+    padding: 0;
+    position: relative;
+    
+    /* Skapa en streckad linje (spåret) i mitten */
+    background-image: linear-gradient(to bottom, transparent 48%, #444 49%, #444 51%, transparent 52%);
 }
 
-.actual-time {
-    color: #4ade80;
+/* Styla tågboxen när den ligger i mellanrummet */
+.spacer-row .current-train-box {
+    margin: 0 auto;
+    width: auto;
+    min-width: 140px;
+    position: relative;
+    z-index: 2; /* Ligger ovanpå det streckade spåret */
+    background-color: #1e1e1e; /* Mörk bakgrund så inte strecket syns igenom texten */
+    border: 1px solid #4da6ff;
+    box-shadow: 0 0 10px rgba(77, 166, 255, 0.4); /* Extra glow */
 }
 
-/* Red trains (for certain types) */
-.red-train {
-    color: #ef4444;
-}
-
-/* Between rows for train position */
-.between-row {
-    background-color: rgba(245, 166, 35, 0.1);
-}
-
-/* Refresh */
+/* --- REFRESH KNAPP (Fixed Bottom) --- */
 .refresh-container {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 15px;
-    background-color: #1a1a1a;
     position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
+    background-color: rgba(18, 18, 18, 0.95);
+    backdrop-filter: blur(5px);
+    padding: 12px 20px;
     border-top: 1px solid #333;
+    display: flex;
+    justify-content: center;
+    z-index: 2000;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
 }
 
 .refresh-btn {
-    padding: 10px 20px;
     background-color: #333;
-    border: none;
-    border-radius: 6px;
     color: #fff;
-    cursor: pointer;
+    border: 1px solid #555;
+    padding: 12px 30px;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 14px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    width: 100%;
+    max-width: 300px;
 }
 
-.refresh-btn:hover {
+.refresh-btn:active {
     background-color: #444;
+    transform: translateY(1px);
 }
 
-/* Delay information styling */
-.delay-info {
-    font-weight: bold;
-    margin-left: 5px;
+.loading {
+    padding-top: 50px;
+    font-size: 14px;
+    color: #888;
 }
 
-.delay-info.on-time {
-    color: #28a745; /* Green */
+.error-message {
+    color: #ff5252;
+    background: rgba(255, 82, 82, 0.1);
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 82, 82, 0.3);
+    margin-top: 15px;
+    font-size: 13px;
+    text-align: center;
 }
 
-.delay-info.delayed {
-    color: #dc3545; /* Red */
-}
-
-.delay-info.early {
-    color: #007bff; /* Blue */
-}
-
-/* Styling for train number links */
-.train-item a {
-    color: inherit;
-    text-decoration: none;
-    font-weight: bold;
-    border-bottom: 1px dashed currentColor;
-}
-
-.train-item a:hover {
-    color: #007bff;
-    border-bottom: 1px solid #007bff;
-}
-
-.train-item a:visited {
-    color: inherit;
-}
-
-/* Specific styling for same origin trains (left column) */
-.same-origin a {
-    color: #28a745;
-}
-
-.same-origin a:hover {
-    color: #1e7e34;
-}
-
-/* Specific styling for same destination trains (right column) */
-.same-destination a {
-    color: #007bff;
-}
-
-.same-destination a:hover {
-    color: #0056b3;
-}
-
-/* Responsive */
+/* --- DESKTOP TWEAKS --- */
 @media (min-width: 768px) {
     .container {
         max-width: 600px;
+        border-left: 1px solid #333;
+        border-right: 1px solid #333;
     }
-
-    .search-page {
-        padding: 40px;
+    
+    .train-table tbody td {
+        font-size: 14px;
     }
-}
-
-/* === PATCH för att ta bort vit bakgrund från spacer-cell/transit-tåg === */
-.spacer-cell {
-    background: transparent !important;
-}
-
-.spacer-cell .current-train,
-.spacer-cell .train-in-transit,
-.spacer-cell .transit-train,
-.spacer-cell .train-item.transit-train.current-train,
-.spacer-cell .train-item.train-in-transit.current-train {
-    background: transparent !important;
-}
-
-/* Även extra för säkerhets skull om ytterligare wrapper eller td används: */
-td.spacer-cell,
-td.spacer-cell * {
-    background: transparent !important;
-}
-
-/* Transit current train: enbart grön ram, ingen bakgrund */
-.transit-train.current-train,
-.train-item.transit-train.current-train,
-.train-item.train-in-transit.current-train,
-.train-in-transit.current-train {
-    background: transparent !important;
-    border: 2px solid #4ade80 !important;
-    color: #4ade80 !important;
-    font-weight: bold;
-    margin: 0 !important;
-    padding: 2px 6px !important;
-    box-shadow: none !important;
-}
-.spacer-row, .spacer-row * {
-    background: transparent !important;
-}
-
-/* Train at Via (unannounced) station - italic to indicate estimated position */
-.via-station-train {
-    font-style: italic;
-    opacity: 0.85;
+    
+    .current-train-box {
+        width: auto;
+        padding: 4px 10px;
+    }
 }

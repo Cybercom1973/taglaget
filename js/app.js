@@ -93,3 +93,10 @@ function deleteRecentSearch(trainNumber) {
     localStorage.setItem('recentTrainSearches', JSON.stringify(searches));
     loadRecentSearches();
 }
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('SW registrerad:', reg.scope))
+            .catch(err => console.error('SW misslyckades:', err));
+    });
+}

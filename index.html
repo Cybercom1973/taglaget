@@ -12,7 +12,34 @@
             
             <div class="logo">📍</div>
             <h1>Tågläge</h1>
+            <button type="button" id="settings-toggle" class="settings-toggle" aria-label="Inställningar">⚙️</button>
         </header>
+        <div class="settings-overlay" id="settings-overlay">
+            <div class="settings-popup">
+                <div class="settings-header">
+                    <h3>⚙️ Inställningar</h3>
+                    <button type="button" id="settings-close" class="settings-close" aria-label="Stäng">✕</button>
+                </div>
+                <div class="settings-body">
+                    <div class="setting-item">
+                        <label for="max-stations">Antal trafikplatser att visa:</label>
+                        <div class="setting-input-row">
+                            <input type="number" id="max-stations" min="0" max="50" value="0">
+                            <span class="setting-hint">(0 = alla)</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <label for="hide-stationary-minutes">Dölj stillastående tåg efter (min):</label>
+                        <div class="setting-input-row">
+                            <input type="number" id="hide-stationary-minutes" min="1" max="120" value="30">
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-footer">
+                    <button type="button" id="save-settings-btn" class="save-settings-btn">Spara</button>
+                </div>
+            </div>
+        </div>
         
         <main class="search-page">
             <div class="search-container">
@@ -32,19 +59,7 @@
                 <ul id="recent-list"></ul>
             </div>
             
-            <div class="settings-container" id="settings-container">
-                <h3>⚙️ Inställningar</h3>
-                <div class="setting-item">
-                    <label for="max-stations">Antal trafikplatser att visa:</label>
-                    <input type="number" id="max-stations" min="0" max="50" value="0">
-                    <span class="setting-hint">(0 = alla)</span>
-                </div>
-                <div class="setting-item">
-                    <label for="hide-stationary-minutes">Dölj stillastående tåg efter (min):</label>
-                    <input type="number" id="hide-stationary-minutes" min="1" max="120" value="30">
-                </div>
-                <button type="button" id="save-settings-btn" class="save-settings-btn">Spara inställningar</button>
-            </div>
+
         </main>
     </div>
     

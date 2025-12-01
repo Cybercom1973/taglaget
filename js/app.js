@@ -133,6 +133,7 @@ function closeSettings() {
 function loadSettings() {
     const maxStations = localStorage.getItem('taglaget_maxStations');
     const hideStationaryMinutes = localStorage.getItem('taglaget_hideStationaryMinutes');
+    const hideDepartedMinutes = localStorage.getItem('taglaget_hideDepartedMinutes');
     
     if (maxStations !== null) {
         $('#max-stations').val(maxStations);
@@ -140,14 +141,19 @@ function loadSettings() {
     if (hideStationaryMinutes !== null) {
         $('#hide-stationary-minutes').val(hideStationaryMinutes);
     }
+    if (hideDepartedMinutes !== null) {
+        $('#hide-departed-minutes').val(hideDepartedMinutes);
+    }
 }
 
 function saveSettings() {
     const maxStations = parseInt($('#max-stations').val()) || 0;
     const hideStationaryMinutes = parseInt($('#hide-stationary-minutes').val()) || 30;
+    const hideDepartedMinutes = parseInt($('#hide-departed-minutes').val()) || 15;
     
     localStorage.setItem('taglaget_maxStations', maxStations);
     localStorage.setItem('taglaget_hideStationaryMinutes', hideStationaryMinutes);
+    localStorage.setItem('taglaget_hideDepartedMinutes', hideDepartedMinutes);
     
     closeSettings();
 }

@@ -3,6 +3,11 @@ const API_CONFIG = {
     url: 'https://api.trafikinfo.trafikverket.se/v2/data.json'
 };
 
+function escapeXmlValue(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>"']/g, m => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;'}[m]));
+}
+
 const TrafikverketAPI = {
     request: function(xmlQuery) {
         return $.ajax({
@@ -69,6 +74,41 @@ const TrafikverketAPI = {
                 <INCLUDE>FromLocation</INCLUDE>
                 <INCLUDE>ViaToLocation</INCLUDE> <INCLUDE>ViaFromLocation</INCLUDE>
                 <INCLUDE>ActivityType</INCLUDE>   </QUERY>
+        `;
+        return this.request(query);
+    },
+
+    // 3. Hämta alla tåg på samma linje baserat på destination/ursprung
+    getTrainsOnLine: function(fromLocation, toLocation) {
+        const dateStr = new Date().toLocaleDateString('sv-SE');
+        const safeFromLocation = escapeXmlValue(fromLocation);
+        const safeToLocation = escapeXmlValue(toLocation);
+        const query = `
+            <QUERY objecttype="TrainAnnouncement" schemaversion="1.6" orderby="AdvertisedTimeAtLocation">
+                <FILTER>
+                    <AND>
+                        <OR>
+                            <EQ name="ToLocation.LocationName" value="${safeToLocation}" />
+                            <EQ name="FromLocation.LocationName" value="${safeFromLocation}" />
+                        </OR>
+                        <GT name="AdvertisedTimeAtLocation" value="${dateStr}T00:00:00" />
+                        <LT name="AdvertisedTimeAtLocation" value="${dateStr}T23:59:59" />
+                        <EXISTS name="TimeAtLocation" value="true" />
+                    </AND>
+                </FILTER>
+                <INCLUDE>AdvertisedTimeAtLocation</INCLUDE>
+                <INCLUDE>AdvertisedTrainIdent</INCLUDE>
+                <INCLUDE>TechnicalTrainIdent</INCLUDE>
+                <INCLUDE>LocationSignature</INCLUDE>
+                <INCLUDE>ActivityType</INCLUDE>
+                <INCLUDE>TimeAtLocation</INCLUDE>
+                <INCLUDE>ToLocation</INCLUDE>
+                <INCLUDE>FromLocation</INCLUDE>
+                <INCLUDE>ViaToLocation</INCLUDE>
+                <INCLUDE>ViaFromLocation</INCLUDE>
+                <INCLUDE>TrackAtLocation</INCLUDE>
+                <INCLUDE>Advertised</INCLUDE>
+            </QUERY>
         `;
         return this.request(query);
     }

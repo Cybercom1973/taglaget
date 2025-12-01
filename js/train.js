@@ -157,12 +157,11 @@ function loadTrain(trainNumber) {
                 // Lägg till tåg från linjen (undvik dubletter)
                 if (lineData && lineData.RESPONSE && lineData.RESPONSE.RESULT && lineData.RESPONSE.RESULT[0]) {
                     const lineTrains = lineData.RESPONSE.RESULT[0].TrainAnnouncement || [];
-                    const existingIds = new Set(otherTrains.map(t => 
-                        `${t.AdvertisedTrainIdent}-${t.LocationSignature}-${t.ActivityType}`
-                    ));
+                    const getTrainKey = t => `${t.AdvertisedTrainIdent}-${t.LocationSignature}-${t.ActivityType}`;
+                    const existingIds = new Set(otherTrains.map(getTrainKey));
                     
                     lineTrains.forEach(t => {
-                        const id = `${t.AdvertisedTrainIdent}-${t.LocationSignature}-${t.ActivityType}`;
+                        const id = getTrainKey(t);
                         if (!existingIds.has(id)) {
                             otherTrains.push(t);
                             existingIds.add(id);

@@ -259,13 +259,13 @@ function renderTable(route, otherTrains, mySearchIdent, myDestSig) {
     if (maxStations > 0 && currentPosIndex >= 0) {
         const halfWindow = Math.floor(maxStations / 2);
         let startIdx = Math.max(0, currentPosIndex - halfWindow);
-        let endIdx = Math.min(route.length, startIdx + maxStations);
+        let endIdx = Math.min(displayRoute.length, startIdx + maxStations);
         
-        if (endIdx === route.length) {
+        if (endIdx === displayRoute.length) {
             startIdx = Math.max(0, endIdx - maxStations);
         }
         
-        displayRoute = route.slice(startIdx, endIdx);
+        displayRoute = displayRoute.slice(startIdx, endIdx);
         currentPosIndex = currentPosIndex - startIdx;
     }
 

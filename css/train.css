@@ -5,3 +5,27 @@
     margin: 10px 0;
     padding: 5px;
 }
+/* Spacer row for train in transit */
+.spacer-row {
+    background: linear-gradient(to bottom, #f5f5f5 0%, #fff 50%, #f5f5f5 100%);
+    height: 40px;
+}
+
+. spacer-cell {
+    text-align: center;
+    vertical-align: middle;
+    border-left: 2px dashed #ccc;
+    border-right: 2px dashed #ccc;
+}
+
+.train-in-transit {
+    font-weight: bold;
+    color: #007bff;
+    font-size: 16px;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}

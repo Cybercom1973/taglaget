@@ -142,11 +142,32 @@ function loadTrain(trainNumber) {
             const myDestSig = findDestinationSignature(announcements);
             const myFromSig = findOriginSignature(announcements);
 
-            // Hämta tåg på hela linjen (baserat på destination/ursprung)
-            return TrafikverketAPI.getTrainsOnLine(myFromSig, myDestSig).then(otherData => {
+            // Hämta tåg från BÅDA metoderna för att få komplett bild
+            const routeTrainsPromise = TrafikverketAPI.getOtherTrains(signatures);
+            const lineTrainsPromise = TrafikverketAPI.getTrainsOnLine(myFromSig, myDestSig);
+
+            return Promise.all([routeTrainsPromise, lineTrainsPromise]).then(([routeData, lineData]) => {
                 let otherTrains = [];
-                if (otherData && otherData.RESPONSE && otherData.RESPONSE.RESULT && otherData.RESPONSE.RESULT[0]) {
-                    otherTrains = otherData.RESPONSE.RESULT[0].TrainAnnouncement || [];
+                
+                // Samla tåg från rutten
+                if (routeData && routeData.RESPONSE && routeData.RESPONSE.RESULT && routeData.RESPONSE.RESULT[0]) {
+                    otherTrains = routeData.RESPONSE.RESULT[0].TrainAnnouncement || [];
+                }
+                
+                // Lägg till tåg från linjen (undvik dubletter)
+                if (lineData && lineData.RESPONSE && lineData.RESPONSE.RESULT && lineData.RESPONSE.RESULT[0]) {
+                    const lineTrains = lineData.RESPONSE.RESULT[0].TrainAnnouncement || [];
+                    const existingIds = new Set(otherTrains.map(t => 
+                        `${t.AdvertisedTrainIdent}-${t.LocationSignature}-${t.ActivityType}`
+                    ));
+                    
+                    lineTrains.forEach(t => {
+                        const id = `${t.AdvertisedTrainIdent}-${t.LocationSignature}-${t.ActivityType}`;
+                        if (!existingIds.has(id)) {
+                            otherTrains.push(t);
+                            existingIds.add(id);
+                        }
+                    });
                 }
                 
                 renderTable(route, otherTrains, trainNumber, myDestSig);

@@ -2,6 +2,9 @@ $(document).ready(function() {
     // Load recent searches from localStorage
     loadRecentSearches();
     
+    loadSettings();
+    $('#save-settings-btn').on('click', saveSettings);
+    
     // Handle search form submission
     $('#search-form').on('submit', function(e) {
         e.preventDefault();
@@ -99,4 +102,27 @@ if ('serviceWorker' in navigator) {
             .then(reg => console.log('SW registrerad:', reg.scope))
             .catch(err => console.error('SW misslyckades:', err));
     });
+}
+
+// --- INSTÄLLNINGAR ---
+function loadSettings() {
+    const maxStations = localStorage.getItem('taglaget_maxStations');
+    const hideStationaryMinutes = localStorage.getItem('taglaget_hideStationaryMinutes');
+    
+    if (maxStations !== null) {
+        $('#max-stations').val(maxStations);
+    }
+    if (hideStationaryMinutes !== null) {
+        $('#hide-stationary-minutes').val(hideStationaryMinutes);
+    }
+}
+
+function saveSettings() {
+    const maxStations = parseInt($('#max-stations').val()) || 0;
+    const hideStationaryMinutes = parseInt($('#hide-stationary-minutes').val()) || 30;
+    
+    localStorage.setItem('taglaget_maxStations', maxStations);
+    localStorage.setItem('taglaget_hideStationaryMinutes', hideStationaryMinutes);
+    
+    alert('Inställningar sparade!');
 }

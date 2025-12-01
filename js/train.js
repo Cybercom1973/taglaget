@@ -44,6 +44,17 @@ function findDestinationSignature(announcements) {
     return "?";
 }
 
+// Hitta ursprungsstation för ditt tåg
+function findOriginSignature(announcements) {
+    for (const ann of announcements) {
+        if (ann.FromLocation && ann.FromLocation.length > 0) {
+            return ann.FromLocation[0].LocationName;
+        }
+    }
+    // Fallback: använd första stationen
+    return announcements.length > 0 ? announcements[0].LocationSignature : "?";
+}
+
 // --- BYGG RUTT ---
 function buildRoute(announcements) {
     if (!announcements || announcements.length === 0) return [];
@@ -129,8 +140,10 @@ function loadTrain(trainNumber) {
             const route = buildRoute(announcements);
             const signatures = route.map(r => r.signature);
             const myDestSig = findDestinationSignature(announcements);
+            const myFromSig = findOriginSignature(announcements);
 
-            return TrafikverketAPI.getOtherTrains(signatures).then(otherData => {
+            // Hämta tåg på hela linjen (baserat på destination/ursprung)
+            return TrafikverketAPI.getTrainsOnLine(myFromSig, myDestSig).then(otherData => {
                 let otherTrains = [];
                 if (otherData && otherData.RESPONSE && otherData.RESPONSE.RESULT && otherData.RESPONSE.RESULT[0]) {
                     otherTrains = otherData.RESPONSE.RESULT[0].TrainAnnouncement || [];
@@ -193,12 +206,13 @@ function renderTable(route, otherTrains, mySearchIdent, myDestSig) {
     // B. Applicera filtret "Spöktåg"
     const activeOtherTrains = [];
     const hideStationaryMinutes = parseInt(localStorage.getItem('taglaget_hideStationaryMinutes')) || 30;
+    const hideDepartedMinutes = parseInt(localStorage.getItem('taglaget_hideDepartedMinutes')) || 15;
 
     latestMap.forEach(t => {
         const ageMinutes = Math.abs((now - parseDate(t.TimeAtLocation)) / 60000);
         
-        // REGEL 1: Avgång -> Visa vid senaste kända position (ta bort 1-minutsregeln)
-        // Tåg som avgått visas nu vid sin senaste kända driftplats
+        // REGEL 1: Avgång -> Max X minuter (konfigurerbart)
+        if (t.ActivityType === 'Avgang' && ageMinutes > hideDepartedMinutes) return;
         
         // REGEL 2: Ankomst -> Konfigurerbar tid (Står inne)
         if (t.ActivityType === 'Ankomst' && ageMinutes > hideStationaryMinutes) return;
